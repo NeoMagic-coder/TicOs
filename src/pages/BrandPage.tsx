@@ -1,6 +1,7 @@
 import { useStore } from '@/stores/useStore';
 import { selectLastAgentMessage } from '@/stores/selectors';
-import { Palette, Sparkles, Globe, Check, X, Loader2, AlertCircle, MessageSquare } from 'lucide-react';
+import { Palette, Sparkles, Globe, Check, X, Loader2, AlertCircle, MessageSquare, Image as ImageIcon } from 'lucide-react';
+import { extractImages } from '@/components/ChatMessageBody';
 
 export function BrandPage() {
   const product = useStore((s) => s.onboardedProduct);
@@ -12,6 +13,23 @@ export function BrandPage() {
   // shows up here too instead of "henüz üretilmedi".
   const chatBrand = useStore(selectLastAgentMessage('brand_identity_agent'));
   const setPage = useStore((s) => s.setCurrentPage);
+  // Collect every image URL ever produced by any agent in the chat history so
+  // brand_visual_generator outputs (logo, packaging mockups, etc.) appear on
+  // the Brand page without needing to scroll the chat.
+  const chatMessages = useStore((s) => s.chatMessages);
+  const visualGallery = (() => {
+    const seen = new Set<string>();
+    const out: { src: string; agent_id?: string; ts: string }[] = [];
+    for (const msg of chatMessages) {
+      if (msg.role !== 'assistant') continue;
+      for (const src of extractImages(msg.content)) {
+        if (seen.has(src)) continue;
+        seen.add(src);
+        out.push({ src, agent_id: msg.agent_id, ts: msg.timestamp });
+      }
+    }
+    return out.reverse(); // newest first
+  })();
 
   return (
     <div className="flex flex-col h-full bg-[#1a1816] text-gray-200 overflow-hidden">
@@ -72,6 +90,36 @@ export function BrandPage() {
             <div className="flex-1">
               <div className="text-sm font-semibold text-red-300">Üretim başarısız</div>
               <div className="text-xs text-gray-400 mt-1 break-words">{error}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Visual gallery — every image any agent produced in this session,
+            including brand_visual_generator output. Shown above the structured
+            identity so the most "showable" artifacts are immediately visible. */}
+        {visualGallery.length > 0 && (
+          <div className="bg-[#262422] border border-[#3a3633] rounded-2xl p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <ImageIcon size={14} className="text-pink-300" />
+              <h3 className="text-sm font-semibold text-gray-200">Ajan Görselleri</h3>
+              <span className="text-[10px] text-gray-500">({visualGallery.length})</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {visualGallery.map((v) => (
+                <a
+                  key={v.src}
+                  href={v.src}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group block bg-[#1a1816] border border-[#3a3633] rounded-lg overflow-hidden hover:border-pink-500/50 transition-colors"
+                  title={`${v.agent_id ?? 'agent'} · ${new Date(v.ts).toLocaleString('tr-TR')}`}
+                >
+                  <img src={v.src} alt="agent görsel" loading="lazy" className="w-full aspect-square object-cover" />
+                  <div className="px-2 py-1.5 text-[10px] text-gray-500 truncate group-hover:text-gray-300">
+                    {v.agent_id ?? 'agent'} · {new Date(v.ts).toLocaleTimeString('tr-TR')}
+                  </div>
+                </a>
+              ))}
             </div>
           </div>
         )}

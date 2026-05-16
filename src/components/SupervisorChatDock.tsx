@@ -1,6 +1,7 @@
 import { useStore } from '@/stores/useStore';
 import { Send, Bot, User, MessageSquare, X, Sparkles, Zap, Minimize2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { ChatMessageBody } from './ChatMessageBody';
 
 /** Page-aware quick prompts that change based on the current view. */
 function quickPromptsFor(page: string, productName?: string): string[] {
@@ -181,7 +182,7 @@ export function SupervisorChatDock() {
                     </div>
                   )}
                   <div
-                    className={`max-w-[78%] rounded-xl px-2.5 py-1.5 text-[11px] leading-relaxed whitespace-pre-wrap break-words ${
+                    className={`max-w-[78%] rounded-xl px-2.5 py-1.5 text-[11px] leading-relaxed break-words ${
                       isUser
                         ? 'bg-indigo-600 text-white rounded-tr-sm'
                         : 'bg-gray-800 text-gray-200 border border-gray-700 rounded-tl-sm'
@@ -190,7 +191,11 @@ export function SupervisorChatDock() {
                     {!isUser && agent && (
                       <div className="text-[9px] font-medium text-indigo-300 mb-0.5">{agent.name}</div>
                     )}
-                    {msg.content}
+                    <ChatMessageBody
+                      content={msg.content}
+                      textClassName="text-[11px] whitespace-pre-wrap leading-relaxed"
+                      imgClassName="rounded-lg border border-gray-700 max-w-[220px] mt-1"
+                    />
                     {msg.tools_used && msg.tools_used.length > 0 && (
                       <div className="mt-1 flex flex-wrap gap-1">
                         {msg.tools_used.slice(0, 4).map((t) => (

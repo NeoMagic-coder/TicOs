@@ -1,35 +1,7 @@
 import { useStore } from '@/stores/useStore';
 import { Send, Bot, User, ChevronDown, ChevronRight, Zap, Bug, Radio } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
-
-/** Renders chat content with inline ![alt](url) images extracted to <img> blocks. */
-function ChatMessageBody({ content }: { content: string }) {
-  const re = /!\[[^\]]*\]\(([^)]+)\)/g;
-  const parts: Array<{ type: 'text'; text: string } | { type: 'img'; src: string }> = [];
-  let last = 0;
-  for (const m of content.matchAll(re)) {
-    if (m.index !== undefined && m.index > last) {
-      parts.push({ type: 'text', text: content.slice(last, m.index) });
-    }
-    parts.push({ type: 'img', src: m[1] });
-    last = (m.index ?? 0) + m[0].length;
-  }
-  if (last < content.length) parts.push({ type: 'text', text: content.slice(last) });
-
-  return (
-    <div className="space-y-2">
-      {parts.map((p, i) =>
-        p.type === 'text' ? (
-          <div key={i} className="text-sm whitespace-pre-wrap leading-relaxed">{p.text}</div>
-        ) : (
-          <a key={i} href={p.src} target="_blank" rel="noreferrer" className="block">
-            <img src={p.src} alt="agent görsel" className="rounded-lg border border-gray-700 max-w-xs" />
-          </a>
-        ),
-      )}
-    </div>
-  );
-}
+import { ChatMessageBody } from '@/components/ChatMessageBody';
 
 export function ChatPage() {
   const { chatMessages, sendUserMessage, sendUserMessageStream, debugMode, toggleDebugMode, agents, isThinking, onboardedProduct, chatProgress } = useStore();
