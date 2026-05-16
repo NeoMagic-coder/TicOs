@@ -212,7 +212,7 @@ Worked example: `restock_alert_builder` (yeni `stock` aracı,
   multi-agent autonomy layer adds 4 agents: `negotiation_agent`,
   `logistics_agent`, `dynamic_pricing_agent`, `autonomous_decision_agent`.
 - **Tool manifests**: 12 JSON files under `apps/api/tools/manifests/`,
-  65 manifest entries total. The `autonomous_layer.json` file groups
+  69 manifest entries total (includes Sahibinden + Dolap listing/onboard tools). The `autonomous_layer.json` file groups
   negotiation, logistics, dynamic-pricing and decision-policy tools. Most are `mode: "mock"`; live adapters:
   `brand_visual_generator` (Gemini image), `memory_search` (pgvector via
   `apps.api.core.memory.store`), and three Shopify Admin REST tools
