@@ -9,6 +9,11 @@ dist
 apps/api/data/*.db
 apps/api/data/*.db-journal
 
+# Runtime agent-generated visual artifacts (brand_visual_generator output).
+# Keep the directory via .gitkeep so the path resolves on fresh clones.
+apps/_images/*
+!apps/_images/.gitkeep
+
 # Python
 __pycache__/
 *.py[cod]
