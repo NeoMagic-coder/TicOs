@@ -1,0 +1,93 @@
+[
+  {
+    "tool_id": "google_trends_query",
+    "name": "Google Trends Sorgu",
+    "description": "Anahtar kelime için trend hareketi getirir.",
+    "category": "research",
+    "provider": "google",
+    "auth_required": false,
+    "timeout_ms": 15000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "keyword": {"type": "string"},
+        "region": {"type": "string", "default": "TR"}
+      },
+      "required": ["keyword"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"trend_pct_12m": {"type": "string"}}
+    },
+    "allowed_agents": ["market_research_agent", "supervisor", "analytics_agent"],
+    "cost_estimate_usd": 0.001,
+    "mode": "mock",
+    "tags": ["research", "trend"]
+  },
+  {
+    "tool_id": "competitor_profile_builder",
+    "name": "Rakip Profili Çıkar",
+    "description": "Rakip mağazanın ürün/fiyat/yorum profilini çıkarır.",
+    "category": "research",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 30000,
+    "input_schema": {
+      "type": "object",
+      "properties": {"url": {"type": "string"}},
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"profile": {"type": "object"}}
+    },
+    "allowed_agents": ["market_research_agent"],
+    "cost_estimate_usd": 0.008,
+    "mode": "mock",
+    "tags": ["research", "competitor"]
+  },
+  {
+    "tool_id": "niche_scorer",
+    "name": "Niş Skorlayıcı",
+    "description": "Bir niş için 0-100 girilmeli mi skoru.",
+    "category": "research",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 12000,
+    "input_schema": {
+      "type": "object",
+      "properties": {"niche": {"type": "string"}},
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"score": {"type": "number"}}
+    },
+    "allowed_agents": ["market_research_agent", "supervisor"],
+    "cost_estimate_usd": 0.002,
+    "mode": "mock",
+    "tags": ["research", "scoring"]
+  },
+  {
+    "tool_id": "demand_estimator",
+    "name": "Talep Tahmini",
+    "description": "Pazar büyüklüğü ve aylık talep tahmini.",
+    "category": "research",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 15000,
+    "input_schema": {
+      "type": "object",
+      "properties": {"keyword": {"type": "string"}},
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"monthly_searches": {"type": "integer"}}
+    },
+    "allowed_agents": ["market_research_agent", "analytics_agent"],
+    "cost_estimate_usd": 0.003,
+    "mode": "mock",
+    "tags": ["research"]
+  }
+]

@@ -1,0 +1,21 @@
+@inherits LayoutComponentBase
+
+<div class="layout">
+    <aside class="sidebar">
+        <div class="brand">
+            <span class="brand-icon">🛒</span>
+            <span class="brand-text">OneProduct</span>
+        </div>
+        <nav>
+            <a href="/" class="nav-link">⚡ Canlı Akış</a>
+            <a href="/agents" class="nav-link">🤖 Ajanlar</a>
+        </nav>
+        <div class="sidebar-footer">
+            <span class="pulse-dot"></span>
+            <span class="muted">Realtime</span>
+        </div>
+    </aside>
+    <main class="content fade-in">
+        @Body
+    </main>
+</div>

@@ -1,0 +1,115 @@
+@page "/"
+@rendermode InteractiveServer
+@inject AgentApiClient Api
+@inject NavigationManager Nav
+@implements IAsyncDisposable
+
+<h1 class="page-title">⚡ Canlı Ajan Akışı</h1>
+<p class="muted">Gerçek zamanlı ajan aktiviteleri SignalR üzerinden yayınlanıyor.</p>
+
+<div class="grid">
+    @if (_agents is null || _agents.Count == 0)
+    {
+        <div class="empty-state shimmer">
+            Backend bekleniyor… <code>uvicorn apps.api.main:app --port 8000</code>
+        </div>
+    }
+    else
+    {
+        @foreach (var a in _agents)
+        {
+            var activity = _latest.GetValueOrDefault(a.AgentId);
+            var statusClass = activity?.Status ?? "idle";
+            var conf = activity?.Confidence ?? 0;
+            <div class="agent-card @(activity is not null ? "live" : "")"
+                 style="--accent: @(a.Color ?? "#6366f1")">
+                <div class="agent-head">
+                    <span class="agent-icon">@(a.Icon ?? "🤖")</span>
+                    <div>
+                        <div class="agent-name">@a.Name</div>
+                        <div class="agent-role muted">@a.Role</div>
+                    </div>
+                    <span class="status-pill status-@statusClass">@statusClass</span>
+                </div>
+                <div class="agent-body">
+                    @if (activity is not null)
+                    {
+                        <div class="activity-summary slide-in">@activity.Summary</div>
+                        <div class="confidence-wrap" title="Güven: @(conf.ToString("0.00"))">
+                            <div class="confidence-fill"
+                                 style="width: @((conf * 100).ToString("0"))%"></div>
+                        </div>
+                        <div class="muted small">@activity.At.LocalDateTime.ToString("HH:mm:ss")</div>
+                    }
+                    else
+                    {
+                        <div class="muted">Bekleniyor…</div>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>
+
+<section class="chat-strip">
+    <input class="chat-input" @bind="_chatInput" @onkeydown="OnKey" placeholder="Hermes'e komut yaz: 'fiyat ayarla'..." />
+    <button class="btn btn-primary" @onclick="SendChat" disabled="@_sending">
+        @(_sending ? "Gönderiliyor…" : "Gönder")
+    </button>
+</section>
+
+@if (!string.IsNullOrEmpty(_lastReply))
+{
+    <div class="chat-reply fade-in">
+        <strong>Hermes:</strong> @_lastReply
+    </div>
+}
+
+@code {
+    private List<AgentSpec>? _agents;
+    private readonly Dictionary<string, AgentActivity> _latest = new();
+    private HubConnection? _hub;
+    private string _chatInput = "";
+    private string _lastReply = "";
+    private bool _sending;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _agents = (await Api.GetAgentsAsync()).ToList();
+
+        _hub = new HubConnectionBuilder()
+            .WithUrl(Nav.ToAbsoluteUri("/hubs/agents"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hub.On<AgentActivity>("activity", a =>
+        {
+            _latest[a.AgentId] = a;
+            InvokeAsync(StateHasChanged);
+        });
+
+        await _hub.StartAsync();
+    }
+
+    private async Task SendChat()
+    {
+        if (string.IsNullOrWhiteSpace(_chatInput) || _sending) return;
+        _sending = true;
+        try
+        {
+            _lastReply = await Api.SendChatAsync(_chatInput);
+            _chatInput = "";
+        }
+        finally { _sending = false; }
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SendChat();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hub is not null) await _hub.DisposeAsync();
+    }
+}

@@ -1,0 +1,100 @@
+# Observability stack: Prometheus + OTel Collector + Tempo + Loki + Promtail + Grafana.
+# Bring up alongside the main stack:
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+#
+# Grafana: http://localhost:3000   (admin / admin)
+# Prometheus: http://localhost:9090
+# Tempo OTLP: otel-collector forwards to tempo automatically.
+
+services:
+  api:
+    environment:
+      OTEL_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_SERVICE_NAME: oneproduct-api
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: oneproduct-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    container_name: oneproduct-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./infra/observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # /metrics for prometheus scrape
+    depends_on:
+      - tempo
+
+  tempo:
+    image: grafana/tempo:2.6.0
+    container_name: oneproduct-tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./infra/observability/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "3200:3200"
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.2.0
+    container_name: oneproduct-loki
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./infra/observability/loki-config.yaml:/etc/loki/config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    container_name: oneproduct-promtail
+    command: ["-config.file=/etc/promtail/config.yaml"]
+    volumes:
+      - ./infra/observability/promtail-config.yaml:/etc/promtail/config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: oneproduct-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  tempo_data:
+  loki_data:
+  grafana_data:

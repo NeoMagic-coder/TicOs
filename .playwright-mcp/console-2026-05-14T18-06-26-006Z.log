@@ -1,0 +1,5 @@
+[     162ms] [LOG] not correct url correcting /d/oneproduct-overview/oneproduct-e28094-api-overview /d/oneproduct-overview/oneproduct-api-overview @ http://localhost:3000/public/build/322.9e448e90c86f8dd2907e.js:274
+[     208ms] [ERROR] [Metrics] Failed to stopMeasure loadDashboardScene SyntaxError: Failed to execute 'measure' on 'Performance': The mark 'loadDashboardScene_started' does not exist.
+    at r (http://localhost:3000/public/build/322.9e448e90c86f8dd2907e.js:274:6860)
+    at C.loadDashboard (http://localhost:3000/public/build/322.9e448e90c86f8dd2907e.js:275:223203) @ http://localhost:3000/public/build/322.9e448e90c86f8dd2907e.js:273
+[     259ms] [WARNING] <meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes"> @ http://localhost:3000/d/oneproduct-overview/oneproduct-e28094-api-overview?orgId=1&from=now-30m&to=now&kiosk=&timezone=browser&var-route=$__all&refresh=30s:0

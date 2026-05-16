@@ -1,0 +1,12 @@
+# Tell GitHub Linguist exactly how to classify our files.
+*.tex linguist-language=TeX linguist-detectable=true
+*.bib linguist-language=BibTeX linguist-detectable=true
+*.bst linguist-language=BibTeX-Style linguist-detectable=true
+*.nix linguist-language=Nix linguist-detectable=true
+
+# Don't let Linguist swallow our whitepaper as "documentation"
+docs/whitepaper/** linguist-documentation=false
+docs/whitepaper/** linguist-detectable=true
+
+# Tool manifests aren't "data" — they're a real registry
+apps/api/tools/manifests/*.json linguist-detectable=true

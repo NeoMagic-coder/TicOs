@@ -1,0 +1,274 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: oneproduct
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oneproduct-config
+  namespace: oneproduct
+data:
+  VITE_API_BASE_URL: "http://api.oneproduct.svc.cluster.local:8000"
+  LOG_LEVEL: "info"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: oneproduct-secrets
+  namespace: oneproduct
+type: Opaque
+stringData:
+  GEMINI_API_KEY: "" # Set via helm or kustomize
+  VITE_GEMINI_API_KEY: ""
+  VITE_GEMINI_MODEL: "gemini-2.5-flash-lite"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oneproduct-api
+  namespace: oneproduct
+  labels:
+    app: oneproduct-api
+    component: backend
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: oneproduct-api
+  template:
+    metadata:
+      labels:
+        app: oneproduct-api
+        component: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: oneproduct-api
+      securityContext:
+        runAsNonRoot: true
+        fsReadOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+      - name: api
+        image: REGISTRY/api:IMAGE_TAG
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        env:
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: oneproduct-secrets
+              key: GEMINI_API_KEY
+        - name: GEMINI_MODEL
+          value: "gemini-2.5-flash-lite"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: PYTHONDONTWRITEBYTECODE
+          value: "1"
+        envFrom:
+        - configMapRef:
+            name: oneproduct-config
+
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 2
+
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/apps/api/_images
+
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir:
+          sizeLimit: 1Gi
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - oneproduct-api
+              topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oneproduct-web
+  namespace: oneproduct
+  labels:
+    app: oneproduct-web
+    component: frontend
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: oneproduct-web
+  template:
+    metadata:
+      labels:
+        app: oneproduct-web
+        component: frontend
+    spec:
+      serviceAccountName: oneproduct-web
+      securityContext:
+        runAsNonRoot: true
+        fsReadOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+      - name: web
+        image: REGISTRY/web:IMAGE_TAG
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 5173
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: VITE_API_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: oneproduct-config
+              key: VITE_API_BASE_URL
+        - name: VITE_GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: oneproduct-secrets
+              key: VITE_GEMINI_API_KEY
+              optional: true
+        - name: VITE_GEMINI_MODEL
+          valueFrom:
+            secretKeyRef:
+              name: oneproduct-secrets
+              key: VITE_GEMINI_MODEL
+              optional: true
+
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 20
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 2
+
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+
+      volumes:
+      - name: tmp
+        emptyDir: {}
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - oneproduct-web
+              topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: oneproduct-api
+  namespace: oneproduct
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: oneproduct-web
+  namespace: oneproduct

@@ -1,0 +1,208 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[turkish,english]{babel}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=teal}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, shapes.geometric}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  frame=single,
+  breaklines=true,
+  columns=fullflexible,
+  keywordstyle=\color{purple}\bfseries,
+  commentstyle=\color{gray}\itshape,
+  stringstyle=\color{teal},
+}
+
+\title{\textbf{OneProduct Agent OS}\\
+\large Hermes Orchestration and OpenClaw Tool-Use\\
+for End-to-End Single-Product E-Commerce}
+
+\author{Gökhan Türkmen\\
+\small \href{https://github.com/NeoMagic-coder/oneproduct-agent-os}{github.com/NeoMagic-coder/oneproduct-agent-os}}
+
+\date{May 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We describe \emph{OneProduct Agent OS}, a multi-agent platform that operates the
+entire e-commerce lifecycle of a single product autonomously. The system is built
+around two cooperating layers: \textbf{Hermes}, an orchestration plane that
+decomposes user intent into a directed acyclic task graph; and \textbf{OpenClaw},
+a permission-scoped tool-use plane that exposes 70+ self-describing tool
+manifests. A heterogeneous roster of 18 specialised agents (research, brand,
+pricing, growth, support, legal, etc.) cooperates through Hermes while sharing
+the OpenClaw registry. We describe the lifecycle, confidence-based escalation,
+and human-in-the-loop approval gates. A reference implementation ships as a
+single-file Vite frontend (TypeScript) plus a FastAPI backend (Python) with a
+mock LLM provider that gracefully upgrades to Google Gemini~\cite{gemini2024}.
+\end{abstract}
+
+\section{Introduction}
+
+Modern e-commerce operations span at least twelve distinct surfaces---product
+research, brand identity, store setup, listing optimisation, pricing,
+advertising, organic content, fulfilment, customer support, reviews, analytics,
+and legal compliance. Operating all of them for a single product typically
+requires a multi-person team. Recent advances in foundation models and tool-use
+\cite{schick2023toolformer, yao2023react} suggest that much of this surface can
+be delegated to a cooperative set of specialised agents
+\cite{wu2023autogen, shen2023hugginggpt}.
+
+The contributions of this paper are:
+\begin{enumerate}
+  \item A two-layer architecture (\textbf{Hermes}~\textsection\ref{sec:hermes},
+    \textbf{OpenClaw}~\textsection\ref{sec:openclaw}) that decouples
+    orchestration from tool-use, mirroring the classical
+    sense--plan--act separation but generalised to multi-agent settings.
+  \item A confidence-aware lifecycle (\textsection\ref{sec:lifecycle}) with
+    human-in-the-loop approval gates derived from risk classes.
+  \item A pragmatic reference implementation released under MIT.
+\end{enumerate}
+
+\section{Architecture}
+\label{sec:architecture}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+  node distance=0.6cm and 1.0cm,
+  agent/.style={draw, rounded corners, minimum width=2.6cm, minimum height=0.8cm, align=center, fill=blue!10},
+  layer/.style={draw, dashed, rounded corners, inner sep=0.4cm},
+  arrow/.style={-{Stealth[length=2mm]}, thick}
+]
+  \node[agent, fill=yellow!20] (user) {User};
+  \node[agent, fill=orange!20, right=of user] (ceo) {CEO Agent};
+  \node[agent, right=of ceo] (a1) {Research};
+  \node[agent, below=of a1] (a2) {Pricing};
+  \node[agent, right=of a1] (a3) {Brand};
+  \node[agent, right=of a2] (a4) {Growth};
+  \node[agent, fill=green!15, below=of user] (tools) {OpenClaw\\Registry};
+
+  \draw[arrow] (user) -- (ceo);
+  \draw[arrow] (ceo) -- (a1);
+  \draw[arrow] (ceo) -- (a2);
+  \draw[arrow] (a1) -- (a3);
+  \draw[arrow] (a2) -- (a4);
+  \draw[arrow] (a1) -- (tools);
+  \draw[arrow] (a2) -- (tools);
+  \draw[arrow] (a3) -- (tools);
+  \draw[arrow] (a4) -- (tools);
+\end{tikzpicture}
+\caption{Hermes (top) decomposes a user request and routes it through a DAG of
+specialised agents; each agent calls into the shared OpenClaw tool registry
+(bottom).}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{Hermes orchestrator}
+\label{sec:hermes}
+
+Hermes is the single entry point for user-originated tasks. Given a message $m$,
+Hermes performs three operations:
+\begin{enumerate}
+  \item \textbf{Intent routing}: a lightweight classifier produces a primary
+    agent $a^\star$ and supporting agents $\mathcal{S}$. The reference
+    implementation uses a keyword heuristic; production deployments substitute
+    an LLM-based classifier.
+  \item \textbf{Planning}: a directed acyclic task graph $G=(V,E)$ is
+    constructed where each $v\in V$ is an (agent, payload) pair, and edges
+    encode pre-requisites.
+  \item \textbf{Execution \& merge}: ready nodes are executed in parallel; once
+    all nodes resolve, an LLM provider produces a single executive summary
+    constrained by a system prompt that injects the product context, routing
+    rationale, and per-agent findings.
+\end{enumerate}
+
+\subsection{OpenClaw tool-use}
+\label{sec:openclaw}
+
+OpenClaw exposes tools as JSON Schema manifests with the following invariants:
+\begin{itemize}
+  \item Each manifest declares \texttt{allowed\_agents}; the executor rejects
+    requests that violate this contract.
+  \item Inputs and outputs are validated against the manifest schema before and
+    after invocation.
+  \item Calls run in a sandbox with a per-tool timeout and a maximum
+    \texttt{retry.max\_attempts}. On exhaustion, a declared
+    \texttt{fallback\_tool\_id} is attempted.
+  \item Every execution emits a \texttt{ToolCallLog} for auditing and cost
+    tracking; an optional per-context budget caps cumulative spend.
+\end{itemize}
+
+\begin{lstlisting}[language=Python, caption={OpenClaw permission check (excerpt).}]
+def is_allowed(self, tool_id: str, agent_id: str) -> bool:
+    tool = self.get(tool_id)
+    if tool is None:
+        return False
+    if not tool.allowed_agents:
+        return True
+    return agent_id in tool.allowed_agents
+\end{lstlisting}
+
+\section{Lifecycle and approval}
+\label{sec:lifecycle}
+
+Tasks transition through the states
+\texttt{created} $\rightarrow$ \texttt{triaged} $\rightarrow$ \texttt{assigned}
+$\rightarrow$ \texttt{in\_progress} $\rightarrow$ \{\texttt{waiting\_tool\_result},
+\texttt{waiting\_human\_approval}\} $\rightarrow$ \{\texttt{completed},
+\texttt{failed}, \texttt{escalated}\}.
+
+Each agent reports a confidence score $c \in [0,1]$. If $c$ drops below an
+agent-specific threshold (default $0.6$), Hermes promotes the task to
+\texttt{escalated} and notifies the operator. Actions that touch shared state
+(pricing changes above $\pm 5\%$, mass mail send, legal text publication) are
+flagged \texttt{requires\_approval} on the manifest and gate behind a
+human-in-the-loop approval queue inspired by~\cite{ouyang2022rlhf}.
+
+\section{Implementation notes}
+
+The reference implementation is intentionally minimal:
+
+\begin{itemize}
+  \item \textbf{Frontend}: Vite 7 + React 19 + Tailwind v4, bundled to a single
+    HTML file via \texttt{vite-plugin-singlefile} for trivial demos.
+  \item \textbf{Backend}: FastAPI with Pydantic v2 schemas. Tool manifests live
+    as JSON files under \texttt{apps/api/tools/manifests/}; the registry hot-loads
+    them on boot.
+  \item \textbf{LLM provider}: a thin abstraction over Gemini's
+    \texttt{generateContent} endpoint with a deterministic mock fallback for
+    offline development.
+\end{itemize}
+
+\section{Related work}
+
+Toolformer~\cite{schick2023toolformer} introduced self-supervised tool use for a
+single LLM; ReAct~\cite{yao2023react} extended this to interleaved
+reasoning--action. AutoGen~\cite{wu2023autogen} and
+HuggingGPT~\cite{shen2023hugginggpt} explored multi-agent collaboration but
+without a separate tool plane. OneProduct Agent OS specifically targets the
+e-commerce vertical and emphasises the operational concerns (approval, audit,
+escalation) that are usually treated as afterthoughts.
+
+\section{Limitations and future work}
+
+The current router is keyword-based and brittle on novel phrasings. The mock
+LLM provider is suitable for offline demos but does not reflect production
+behaviour. We plan to (i) replace the router with a fine-tuned classifier; (ii)
+add a streaming response path; and (iii) extend OpenClaw with live adapters for
+Shopify, Trendyol, Amazon, and Meta Ads.
+
+\bibliographystyle{plain}
+\bibliography{refs}
+
+\end{document}

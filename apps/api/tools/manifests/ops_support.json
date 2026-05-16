@@ -1,0 +1,135 @@
+[
+  {
+    "tool_id": "order_list",
+    "name": "Sipariş Listesi",
+    "description": "Belirtilen aralıktaki sipariş kayıtlarını döner.",
+    "category": "order",
+    "provider": "internal",
+    "auth_required": true,
+    "timeout_ms": 15000,
+    "input_schema": {
+      "type": "object",
+      "properties": {"status": {"type": "string"}, "limit": {"type": "integer", "default": 50}},
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"orders": {"type": "array"}}
+    },
+    "allowed_agents": ["operations_agent", "support_agent", "analytics_agent"],
+    "cost_estimate_usd": 0.0,
+    "mode": "mock",
+    "tags": ["order"]
+  },
+  {
+    "tool_id": "stock_levels_query",
+    "name": "Stok Seviyesi Sorgu",
+    "description": "Ürün ve varyant bazında stok bilgisi döner.",
+    "category": "stock",
+    "provider": "internal",
+    "auth_required": true,
+    "timeout_ms": 10000,
+    "input_schema": {
+      "type": "object",
+      "properties": {"sku": {"type": "string"}},
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"levels": {"type": "array"}}
+    },
+    "allowed_agents": ["operations_agent", "analytics_agent"],
+    "cost_estimate_usd": 0.0,
+    "mode": "mock",
+    "tags": ["stock"]
+  },
+  {
+    "tool_id": "stock_forecast",
+    "name": "Stok Tahmini",
+    "description": "Geçmiş satışlardan reorder noktası ve tükeneceği tahmini tarih.",
+    "category": "stock",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 15000,
+    "input_schema": {
+      "type": "object",
+      "properties": {"sku": {"type": "string"}, "lead_time_days": {"type": "integer", "default": 14}},
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"reorder_point": {"type": "integer"}, "days_left": {"type": "integer"}}
+    },
+    "allowed_agents": ["operations_agent", "supervisor"],
+    "cost_estimate_usd": 0.002,
+    "mode": "mock",
+    "tags": ["stock", "forecast"]
+  },
+  {
+    "tool_id": "support_inbox_fetch",
+    "name": "Destek Inbox Çek",
+    "description": "Açık müşteri destek taleplerini çeker.",
+    "category": "support",
+    "provider": "internal",
+    "auth_required": true,
+    "timeout_ms": 12000,
+    "input_schema": {
+      "type": "object",
+      "properties": {"limit": {"type": "integer", "default": 25}},
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"tickets": {"type": "array"}}
+    },
+    "allowed_agents": ["support_agent", "supervisor"],
+    "cost_estimate_usd": 0.0,
+    "mode": "mock",
+    "tags": ["support"]
+  },
+  {
+    "tool_id": "sentiment_analyzer",
+    "name": "Duygu Analizci",
+    "description": "Türkçe metnin duygusunu (pozitif/nötr/negatif) skorlar.",
+    "category": "support",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 6000,
+    "input_schema": {
+      "type": "object",
+      "properties": {"text": {"type": "string"}},
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"label": {"type": "string"}, "score": {"type": "number"}}
+    },
+    "allowed_agents": ["support_agent", "review_reputation_agent", "analytics_agent"],
+    "cost_estimate_usd": 0.001,
+    "mode": "mock",
+    "tags": ["support", "nlp"]
+  },
+  {
+    "tool_id": "draft_reply_generator",
+    "name": "Taslak Yanıt Üretici",
+    "description": "Müşteri mesajına marka tonunda Türkçe yanıt taslağı üretir.",
+    "category": "support",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 12000,
+    "input_schema": {
+      "type": "object",
+      "properties": {"message": {"type": "string"}, "tone": {"type": "string", "default": "empathetic"}},
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"reply": {"type": "string"}}
+    },
+    "allowed_agents": ["support_agent"],
+    "requires_approval": true,
+    "cost_estimate_usd": 0.004,
+    "mode": "mock",
+    "tags": ["support", "generation"]
+  }
+]

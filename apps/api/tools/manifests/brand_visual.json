@@ -1,0 +1,32 @@
+[
+  {
+    "tool_id": "brand_visual_generator",
+    "name": "Marka Görseli Üret",
+    "description": "Gemini image modeli ile ürün/ambiance/moodboard görseli üretir.",
+    "category": "brand",
+    "provider": "gemini",
+    "auth_required": true,
+    "timeout_ms": 60000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "prompt": {"type": "string", "description": "Türkçe veya İngilizce görsel tarifi"},
+        "model": {"type": "string", "description": "Opsiyonel — varsayılan gemini-3-pro-image-preview (Nano Banana 2)"}
+      },
+      "required": ["prompt"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "url": {"type": "string"},
+        "filename": {"type": "string"},
+        "mime": {"type": "string"},
+        "size_bytes": {"type": "number"}
+      }
+    },
+    "allowed_agents": ["brand_identity_agent", "marketing_agent", "supervisor"],
+    "cost_estimate_usd": 0.039,
+    "mode": "live",
+    "tags": ["brand", "image", "gemini"]
+  }
+]

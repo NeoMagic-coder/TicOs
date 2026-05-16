@@ -1,0 +1,10 @@
+node_modules
+dist
+.venv
+__pycache__
+*.pyc
+.git
+.idea
+.vscode
+*.log
+apps/api/_images
