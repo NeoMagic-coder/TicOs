@@ -22,8 +22,7 @@ Günümüz e-ticaret ve ürün yönetimi ekosistemlerinde veriler; pazar analizi
 
 Aşağıdaki diyagram, sistemin çoklu-ajan (Multi-Agent) mimarisini, veri akışını ve Gemini API ile olan entegrasyonunu göstermektedir:
 
-```mermaid
-graph TD
+ 
     User([Kullanıcı / API Tetikleyici]) --> Orchestrator[Ajan Orkestratörü / LangChain]
     
     subgraph Ajan Katmanı (Agent OS)
