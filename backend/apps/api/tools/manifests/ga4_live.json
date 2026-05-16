@@ -1,0 +1,69 @@
+[
+  {
+    "tool_id": "ga4_realtime_report",
+    "name": "GA4 Anlık Rapor",
+    "description": "Google Analytics 4'ten anlık aktif kullanıcı sayısını ve ülke/cihaz dağılımını çeker.",
+    "version": "1.0.0",
+    "category": "analytics",
+    "provider": "google",
+    "auth_required": true,
+    "rate_limit": {"requests_per_minute": 60},
+    "timeout_ms": 20000,
+    "retry": {"max_attempts": 3, "backoff": "exponential"},
+    "fallback_tool_id": null,
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "active_users": {"type": "integer"},
+        "top_countries": {"type": "array"},
+        "kind": {"type": "string"}
+      }
+    },
+    "allowed_agents": ["analytics_agent", "marketing_agent", "supervisor"],
+    "requires_approval": false,
+    "cost_estimate": {"per_call_usd": 0.0},
+    "mode": "live",
+    "tags": ["analytics", "ga4", "realtime"]
+  },
+  {
+    "tool_id": "ga4_sessions_report",
+    "name": "GA4 Oturum Raporu",
+    "description": "GA4'ten belirtilen gün aralığı için oturum, gelir ve dönüşüm verilerini çeker (varsayılan 7 gün).",
+    "version": "1.0.0",
+    "category": "analytics",
+    "provider": "google",
+    "auth_required": true,
+    "rate_limit": {"requests_per_minute": 60},
+    "timeout_ms": 25000,
+    "retry": {"max_attempts": 3, "backoff": "exponential"},
+    "fallback_tool_id": null,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "days": {"type": "integer", "minimum": 1, "maximum": 90, "default": 7}
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "period_days": {"type": "integer"},
+        "total_sessions": {"type": "integer"},
+        "total_revenue_usd": {"type": "number"},
+        "total_conversions": {"type": "integer"},
+        "conversion_rate": {"type": "number"},
+        "daily_breakdown": {"type": "array"}
+      }
+    },
+    "allowed_agents": ["analytics_agent", "marketing_agent", "supervisor", "pricing_finance_agent"],
+    "requires_approval": false,
+    "cost_estimate": {"per_call_usd": 0.0},
+    "mode": "live",
+    "tags": ["analytics", "ga4", "sessions", "revenue"]
+  }
+]

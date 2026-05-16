@@ -1,0 +1,42 @@
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+.DS_Store
+
+# SQLite database
+apps/api/data/*.db
+apps/api/data/*.db-journal
+
+# Runtime agent-generated visual artifacts (brand_visual_generator output).
+# Keep the directory via .gitkeep so the path resolves on fresh clones.
+apps/_images/*
+!apps/_images/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# LaTeX
+docs/whitepaper/*.aux
+docs/whitepaper/*.bbl
+docs/whitepaper/*.blg
+docs/whitepaper/*.log
+docs/whitepaper/*.out
+docs/whitepaper/*.toc
+docs/whitepaper/*.fls
+docs/whitepaper/*.fdb_latexmk
+docs/whitepaper/*.synctex.gz
+docs/whitepaper/paper.pdf
+
+# Nix
+result
+result-*

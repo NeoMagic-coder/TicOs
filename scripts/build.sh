@@ -3,17 +3,14 @@ set -e
 
 REGISTRY="${REGISTRY:-ghcr.io/yourorg/oneproduct}"
 VERSION="${VERSION:-latest}"
-DOCKERFILE_API="${DOCKERFILE_API:-Dockerfile.api}"
-DOCKERFILE_WEB="${DOCKERFILE_WEB:-Dockerfile.web}"
-
 echo "Building OneProduct images..."
 echo "Registry: $REGISTRY"
 echo "Version: $VERSION"
 
-docker build -f "$DOCKERFILE_API" -t "$REGISTRY/api:$VERSION" .
+docker build -f docker/backend.Dockerfile -t "$REGISTRY/api:$VERSION" ./backend
 echo "✓ API image built: $REGISTRY/api:$VERSION"
 
-docker build -f "$DOCKERFILE_WEB" -t "$REGISTRY/web:$VERSION" .
+docker build -f docker/frontend.Dockerfile -t "$REGISTRY/web:$VERSION" ./frontend
 echo "✓ Web image built: $REGISTRY/web:$VERSION"
 
 if [ "$1" = "--push" ]; then

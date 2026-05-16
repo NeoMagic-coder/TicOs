@@ -1,0 +1,310 @@
+[
+  {
+    "tool_id": "supplier_negotiation_simulator",
+    "name": "Tedarikçi Müzakere Simülatörü",
+    "description": "Çok turlu tedarikçi müzakeresini simüle eder; BATNA/ZOPA bazlı sonuç döner.",
+    "category": "negotiation",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 15000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "target_price": {"type": "number"},
+        "walk_away_price": {"type": "number"},
+        "moq": {"type": "integer"},
+        "lead_time_days": {"type": "integer"},
+        "max_rounds": {"type": "integer", "default": 5}
+      },
+      "required": ["target_price", "walk_away_price"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "rounds": {"type": "array"},
+        "final_price": {"type": "number"},
+        "outcome": {"type": "string"}
+      }
+    },
+    "allowed_agents": ["negotiation_agent", "product_development_agent"],
+    "cost_estimate_usd": 0.004,
+    "mode": "mock",
+    "tags": ["negotiation", "supplier"]
+  },
+  {
+    "tool_id": "counter_offer_generator",
+    "name": "Karşı Teklif Üretici",
+    "description": "Mevcut teklife karşılık optimum karşı teklif üretir.",
+    "category": "negotiation",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "current_offer": {"type": "number"},
+        "target": {"type": "number"},
+        "concession_style": {"type": "string", "default": "moderate"}
+      },
+      "required": ["current_offer", "target"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"counter": {"type": "number"}, "rationale": {"type": "string"}}
+    },
+    "allowed_agents": ["negotiation_agent"],
+    "cost_estimate_usd": 0.002,
+    "mode": "mock",
+    "tags": ["negotiation"]
+  },
+  {
+    "tool_id": "deal_evaluator",
+    "name": "Anlaşma Değerlendirici",
+    "description": "BATNA + ZOPA + risk skoru ile anlaşma kabul/red kararı önerir.",
+    "category": "negotiation",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "offer": {"type": "object"},
+        "batna": {"type": "object"}
+      },
+      "required": ["offer"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"decision": {"type": "string"}, "score": {"type": "number"}, "reasons": {"type": "array"}}
+    },
+    "allowed_agents": ["negotiation_agent", "autonomous_decision_agent"],
+    "cost_estimate_usd": 0.002,
+    "mode": "mock",
+    "tags": ["negotiation", "decision"]
+  },
+  {
+    "tool_id": "carrier_rate_comparator",
+    "name": "Kargo Fiyat Karşılaştırıcı",
+    "description": "Birden fazla kargo firmasının (Aras, Yurtiçi, MNG, UPS, DHL) tarifelerini karşılaştırır.",
+    "category": "logistics",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "origin": {"type": "string"},
+        "destination": {"type": "string"},
+        "weight_kg": {"type": "number"},
+        "desi": {"type": "number"}
+      },
+      "required": ["origin", "destination", "weight_kg"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"quotes": {"type": "array"}, "cheapest": {"type": "string"}, "fastest": {"type": "string"}}
+    },
+    "allowed_agents": ["logistics_agent", "operations_agent"],
+    "cost_estimate_usd": 0.001,
+    "mode": "mock",
+    "tags": ["logistics", "shipping"]
+  },
+  {
+    "tool_id": "route_optimizer",
+    "name": "Rota Optimizasyonu",
+    "description": "Çok duraklı teslimat rotasını VRP yaklaşımı ile optimize eder.",
+    "category": "logistics",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "stops": {"type": "array"},
+        "vehicle_capacity_kg": {"type": "number", "default": 1500}
+      },
+      "required": ["stops"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"ordered_stops": {"type": "array"}, "total_distance_km": {"type": "number"}, "eta_hours": {"type": "number"}}
+    },
+    "allowed_agents": ["logistics_agent"],
+    "cost_estimate_usd": 0.003,
+    "mode": "mock",
+    "tags": ["logistics", "routing"]
+  },
+  {
+    "tool_id": "shipment_tracking_aggregator",
+    "name": "Kargo Takip Toplayıcı",
+    "description": "Farklı kargo firmalarındaki gönderileri tek noktadan toplar.",
+    "category": "logistics",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {"tracking_numbers": {"type": "array"}},
+      "required": ["tracking_numbers"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"shipments": {"type": "array"}, "delayed_count": {"type": "integer"}}
+    },
+    "allowed_agents": ["logistics_agent", "operations_agent", "support_agent"],
+    "cost_estimate_usd": 0.001,
+    "mode": "mock",
+    "tags": ["logistics", "tracking"]
+  },
+  {
+    "tool_id": "dynamic_price_engine",
+    "name": "Dinamik Fiyat Motoru",
+    "description": "Talep esnekliği, rakip fiyat ve stok seviyesi sinyallerinden anlık fiyat önerisi üretir.",
+    "category": "dynamic_pricing",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "sku": {"type": "string"},
+        "current_price": {"type": "number"},
+        "elasticity": {"type": "number", "default": -1.4},
+        "competitor_avg": {"type": "number"},
+        "stock_days": {"type": "integer"}
+      },
+      "required": ["sku", "current_price"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "recommended_price": {"type": "number"},
+        "delta_pct": {"type": "number"},
+        "expected_revenue_lift_pct": {"type": "number"},
+        "confidence": {"type": "number"}
+      }
+    },
+    "allowed_agents": ["dynamic_pricing_agent", "pricing_agent"],
+    "requires_approval": true,
+    "cost_estimate_usd": 0.003,
+    "mode": "mock",
+    "tags": ["pricing", "dynamic"]
+  },
+  {
+    "tool_id": "competitor_price_monitor",
+    "name": "Rakip Fiyat Monitörü",
+    "description": "Belirli SKU'lar için rakip fiyatlarını periyodik olarak takip eder ve değişim alarmı üretir.",
+    "category": "dynamic_pricing",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {"sku": {"type": "string"}, "rivals": {"type": "array"}},
+      "required": ["sku"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"prices": {"type": "array"}, "alert": {"type": "string"}}
+    },
+    "allowed_agents": ["dynamic_pricing_agent", "pricing_agent", "market_research_agent"],
+    "cost_estimate_usd": 0.001,
+    "mode": "mock",
+    "tags": ["pricing", "monitoring"]
+  },
+  {
+    "tool_id": "demand_signal_aggregator",
+    "name": "Talep Sinyal Toplayıcı",
+    "description": "Sepete ekleme, görüntüleme, arama trendi sinyallerini birleştirip talep skoru üretir.",
+    "category": "dynamic_pricing",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {"sku": {"type": "string"}, "window_days": {"type": "integer", "default": 7}},
+      "required": ["sku"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"demand_score": {"type": "number"}, "trend": {"type": "string"}}
+    },
+    "allowed_agents": ["dynamic_pricing_agent", "analytics_agent"],
+    "cost_estimate_usd": 0.001,
+    "mode": "mock",
+    "tags": ["pricing", "demand"]
+  },
+  {
+    "tool_id": "autonomy_policy_check",
+    "name": "Otonomi Politika Kontrolü",
+    "description": "Önerilen aksiyonun otonomi bütçesi/limitleri içinde olup olmadığını kontrol eder.",
+    "category": "decision",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action_type": {"type": "string"},
+        "value": {"type": "number"},
+        "risk_level": {"type": "string", "default": "low"}
+      },
+      "required": ["action_type"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"allowed": {"type": "boolean"}, "requires_approval": {"type": "boolean"}, "reason": {"type": "string"}}
+    },
+    "allowed_agents": ["autonomous_decision_agent", "supervisor"],
+    "cost_estimate_usd": 0.0,
+    "mode": "mock",
+    "tags": ["decision", "policy"]
+  },
+  {
+    "tool_id": "spawn_subagent",
+    "name": "Alt Ajan Oluştur",
+    "description": "Belirtilen görevi izole bir alt ajan aracılığıyla çalıştırır. Paralel iş akışları ve bağımsız alt görevler için kullanın.",
+    "category": "delegation",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "agent_id": {
+          "type": "string",
+          "description": "Çalıştırılacak ajanın ID'si (ör. 'pricing_agent')"
+        },
+        "message": {
+          "type": "string",
+          "description": "Alt ajana verilecek görev promptu"
+        },
+        "budget_usd": {
+          "type": "number",
+          "default": 0.05,
+          "description": "Maksimum maliyet (USD). Parent'ın kalanının %50'si ile sınırlanır."
+        }
+      },
+      "required": ["agent_id", "message"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "child_task_id": {"type": "string"},
+        "status": {"type": "string"},
+        "summary": {"type": "string"},
+        "confidence": {"type": "number"},
+        "cost_usd": {"type": "number"}
+      }
+    },
+    "allowed_agents": [],
+    "cost_estimate_usd": 0.0,
+    "mode": "live",
+    "tags": ["delegation", "parallelization"]
+  },
+  {
+    "tool_id": "decision_log_writer",
+    "name": "Karar Günlüğü Yazıcı",
+    "description": "Otonom kararı kalıcı günlüğe yazar; izlenebilirlik sağlar.",
+    "category": "decision",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "decision_id": {"type": "string"},
+        "action": {"type": "string"},
+        "outcome": {"type": "string"},
+        "confidence": {"type": "number"}
+      },
+      "required": ["action"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {"logged": {"type": "boolean"}, "id": {"type": "string"}}
+    },
+    "allowed_agents": ["autonomous_decision_agent"],
+    "cost_estimate_usd": 0.0,
+    "mode": "mock",
+    "tags": ["decision", "audit"]
+  }
+]

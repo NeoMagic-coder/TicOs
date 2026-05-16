@@ -5,17 +5,17 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-if [ ! -f ".env.local" ]; then
+if [ ! -f "env/.env.local" ]; then
   cat >&2 <<EOF
-[dev] .env.local bulunamadı. Frontend Gemini olmadan çalışır (mock yanıtlar).
+[dev] env/.env.local bulunamadı. Frontend Gemini olmadan çalışır (mock yanıtlar).
 [dev] Anahtar eklemek için:
-    echo 'VITE_GEMINI_API_KEY=AIza...' > .env.local
+    echo 'VITE_GEMINI_API_KEY=AIza...' > env/.env.local
 EOF
 fi
 
-if [ ! -d "node_modules" ]; then
+if [ ! -d "frontend/node_modules" ]; then
   echo "[dev] npm install çalıştırılıyor..."
-  npm install
+  (cd frontend && npm install)
 fi
 
 API_PID=""
@@ -33,15 +33,16 @@ trap cleanup EXIT INT TERM
 PYTHON_BIN="${PYTHON:-python3}"
 if "$PYTHON_BIN" -c "import fastapi" >/dev/null 2>&1; then
   echo "[dev] API başlatılıyor → http://localhost:8000"
-  "$PYTHON_BIN" -m uvicorn apps.api.main:app --reload --port 8000 &
+  cd backend && "$PYTHON_BIN" -m uvicorn apps.api.main:app --reload --port 8000 &
   API_PID=$!
+  cd "$ROOT"
 else
   echo "[dev] FastAPI kurulu değil — API başlatılmadı."
-  echo "[dev]   Kurmak için: pip install -r apps/api/requirements.txt"
+  echo "[dev]   Kurmak için: cd backend && pip install -r apps/api/requirements.txt"
 fi
 
 echo "[dev] Vite dev server başlatılıyor → http://localhost:5173"
-npm run dev &
+(cd frontend && npm run dev) &
 WEB_PID=$!
 
 wait

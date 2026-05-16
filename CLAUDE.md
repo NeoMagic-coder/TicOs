@@ -13,16 +13,17 @@ The frontend is a Vite + React 19 SPA that talks to the FastAPI backend; it can 
 
 ## Commands
 
+All backend commands run from the `backend/` directory; frontend commands from `frontend/`.
+
 ```bash
 # Frontend dev (http://localhost:5173)
-npm install
-npm run dev
+cd frontend && npm install && npm run dev
 
 # Backend dev (http://localhost:8000, docs at /docs)
-pip install -r apps/api/requirements.txt
-uvicorn apps.api.main:app --reload --port 8000
+cd backend && pip install -r apps/api/requirements.txt
+cd backend && uvicorn apps.api.main:app --reload --port 8000
 
-# Both together
+# Both together (from repo root)
 scripts/dev.sh
 
 # Reproducible dev shell (Nix)
@@ -31,11 +32,14 @@ nix develop
 # Full check: tsc --noEmit + vite build + pytest
 scripts/check.sh
 
-# Backend tests only
+# Backend tests only (from backend/)
 pytest apps/api/tests -q
 
 # Single test
 pytest apps/api/tests/test_task_graph.py::test_name -q
+
+# Seed agent specs into the running backend
+scripts/seed_api.sh
 
 # Whitepaper build
 make -C docs/whitepaper
@@ -49,16 +53,19 @@ Note: `vite.config.ts` uses `vite-plugin-singlefile`, so `npm run build` inlines
 
 ```
 VITE_GEMINI_API_KEY=AIza...
-VITE_GEMINI_MODEL=gemini-2.5-flash
+VITE_GEMINI_MODEL=gemini-2.5-flash-lite
 GEMINI_API_KEY=AIza...
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-2.5-flash-lite
 ```
+
+If the backend reports "API key not valid" even after setting `.env.local`, a stale system env var may be shadowing it. Clear it with `Remove-Item Env:GEMINI_API_KEY` (PowerShell) before restarting.
 
 ## Backend API routes
 
 ```
 GET    /health
-POST   /api/v1/chat              # Hermes orchestration — DAG + merge
+POST   /api/v1/chat              # Hermes orchestration — DAG + merge (buffered)
+POST   /api/v1/chat/stream       # SSE: live progress events + final message
 GET    /api/v1/agents
 GET    /api/v1/agents/{id}
 GET    /api/v1/tools             # ?category= ?agent_id=
@@ -68,6 +75,7 @@ GET    /api/v1/tasks
 POST   /api/v1/tasks
 GET    /api/v1/approvals
 POST   /api/v1/approvals/{id}/{approve|reject}
+POST   /api/v1/approvals/{id}/estimate    # LLM-estimated expected impact
 ```
 
 OpenAPI docs at `http://localhost:8000/docs`.
@@ -79,7 +87,10 @@ OpenAPI docs at `http://localhost:8000/docs`.
 2. `router.route()` picks `primary_agent` + `supporting` from the active agent set.
 3. `_plan()` builds a `TaskGraph`: supporting nodes depend on the primary node, so they run in a second wave after the primary completes.
 4. Each node runs via `BaseAgent.run()` → may call tools through `OpenClawExecutor.execute()`. Every tool call is appended to `ExecutionContext.audit` (this is what `tools_used` in the response is derived from).
-5. `_merge()` asks the LLM for a Turkish executive summary; falls back to a bulleted digest if the LLM errors. Confidence = mean of agent confidences; below `orchestrator_low_confidence_threshold` the result is marked `escalated`.
+5. **CriticAgent** (`apps/api/agents/critic.py`) scores each agent output 0.0–1.0 on three axes (concreteness, numeric grounding, hallucination risk). Below `critic_min_score` the run retries once; if still below, the result is marked `escalated`. Falls back to a deterministic heuristic when the LLM errors.
+6. `_merge()` asks the LLM for a Turkish executive summary; falls back to a bulleted digest if the LLM errors. Confidence = mean of agent confidences; below `orchestrator_low_confidence_threshold` the result is marked `escalated`.
+
+The SSE path (`POST /api/v1/chat/stream`) emits `progress` events for each lifecycle step (`task_started`, `plan_ready`, `agent_started`, `tool_called`, `critic_scored`, `agent_retry`, `agent_completed`, `merging`) and a final `message` event with the same payload as the buffered endpoint.
 
 ### Adding an agent
 
@@ -187,7 +198,6 @@ Worked example: `restock_alert_builder` (yeni `stock` aracı,
      from apps.api.core.openclaw.executor import register_live_adapter
 
      async def _restock_adapter(payload: dict) -> dict:
-         # gerçek hesaplama veya 3rd-party çağrısı
          return {"reorder_point": 120, "days_until_stockout": 9, "severity": "warning"}
 
      register_live_adapter("restock_alert_builder", _restock_adapter)
@@ -202,7 +212,7 @@ Worked example: `restock_alert_builder` (yeni `stock` aracı,
    senaryosu ekle.
 
 > **README sayım eşleşmesi:** Yeni manifest eklediysen
-> `CLAUDE.md` "Counts of record" bölümündeki **54 manifest** sayısını ve
+> `CLAUDE.md` "Counts of record" bölümündeki sayıyı ve
 > `README.md`'deki aynı sayıyı güncelle.
 
 ### Counts of record (sync with README)
@@ -211,33 +221,64 @@ Worked example: `restock_alert_builder` (yeni `stock` aracı,
   (`AGENT_CLASSES` map). No agent uses the `GenericAgent` fallback. The
   multi-agent autonomy layer adds 4 agents: `negotiation_agent`,
   `logistics_agent`, `dynamic_pricing_agent`, `autonomous_decision_agent`.
-- **Tool manifests**: 12 JSON files under `apps/api/tools/manifests/`,
-  69 manifest entries total (includes Sahibinden + Dolap listing/onboard tools). The `autonomous_layer.json` file groups
+- **Tool manifests**: 14 JSON files under `apps/api/tools/manifests/`,
+  75 manifest entries total (includes Sahibinden + Dolap listing/onboard tools). The `autonomous_layer.json` file groups
   negotiation, logistics, dynamic-pricing and decision-policy tools. Most are `mode: "mock"`; live adapters:
-  `brand_visual_generator` (Gemini image), `memory_search` (pgvector via
-  `apps.api.core.memory.store`), and three Shopify Admin REST tools
-  (`shopify_store_setup`, `shopify_get_orders`, `shopify_update_inventory`)
-  wrapped with `apps.api.core.openclaw.breaker` so an OPEN circuit or
-  missing credentials degrade to mock with `degraded: true` in the payload.
+  `brand_visual_generator` (Gemini image), `memory_search` and `knowledge_search` (pgvector via
+  `apps.api.core.memory.store`; `knowledge_search` filters `kind=doc` and supports `product_id` scoping),
+  three Shopify Admin REST tools
+  (`shopify_store_setup`, `shopify_get_orders`, `shopify_update_inventory`),
+  three Trendyol Partner API tools (`trendyol_get_products`, `trendyol_get_orders`,
+  `trendyol_update_price`) and two GA4 Data API tools (`ga4_realtime_report`,
+  `ga4_sessions_report`) — all wrapped with `apps.api.core.openclaw.breaker` so an
+  OPEN circuit or missing credentials degrade to mock with `degraded: true` in the payload.
 
 If you add or remove agents/tools, update both these numbers and the
 matching sentence in `README.md`.
 
+### Autonomy layer
+
+`apps/api/core/autonomy/` contains four modules that work together for high-confidence autonomous actions:
+
+- **`decision_engine.py`** — Policy-gated evaluator. Given a proposed action (type, value, risk, confidence), checks it against `AutonomyPolicy` thresholds (`max_price_change_pct`, `max_carrier_switch_cost_try`, `min_confidence`, `risk_auto_threshold`). Returns `auto_approved`, `needs_approval`, or `rejected` — deterministic, no side-effects.
+- **`negotiation.py`** — Multi-round negotiation protocol between `NegotiationAgent` and a supplier/counterpart.
+- **`coordination.py`** — Agent-to-agent coordination and capability matching.
+- **`goals.py`** — Goal decomposition for the autonomous decision agent.
+- **`marketplace_router.py`** — Routes autonomous actions to the correct marketplace adapter.
+- **`ontology.py`** — Shared domain vocabulary for cross-agent communication.
+
+The four autonomy agents in `AGENT_CLASSES` (`negotiation_agent`, `logistics_agent`, `dynamic_pricing_agent`, `autonomous_decision_agent`) use these modules rather than making direct LLM calls for every decision.
+
 ### Frontend
+
 - `src/stores/useStore.ts` is the single Zustand store. Pages in `src/pages/` are thin views over it. Layout/sidebar in `src/components/`. Path alias `@` → `src/`.
 - The frontend currently calls Gemini directly from the browser (see README security note). Treat it as a clickable prototype; production flows must go through `apps/api`.
+- `chatWithFallback` (`src/lib/api.ts`) — if the backend returns 5xx/timeout it calls Gemini directly, writing `fallback_used: true` into the audit log.
+- `sendUserMessageStream` in the store drives the SSE path; falls back to the buffered `sendUserMessage` if the stream errors mid-flight.
+- `detectIntent` in the store does Turkish substring matching for supervisor commands (navigation, bulk approvals, brand/pricing regeneration, etc.) and short-circuits the backend call when a match is found.
 
 ### LLM provider
+
 - `apps/api/core/llm/provider.py` exposes `get_llm_provider()` — returns Gemini if `GEMINI_API_KEY` is set, otherwise `MockProvider`. All orchestrator/agent code must go through this abstraction so tests run without network.
+- `apps/api/core/llm/image.py` — Gemini image generation used by `brand_visual_generator`. Output saved to `apps/_images/` (gitignored).
+
+### Memory layer
+
+`apps/api/core/memory/store.py` provides pgvector cosine-similarity search used by the `memory_search` live tool. `embedding.py` wraps Gemini's embedding API. Requires a PostgreSQL instance with the `pgvector` extension — the tool degrades to mock if the connection is absent.
+
+### Observability
+
+`apps/api/core/observability/telemetry.py` sets up OpenTelemetry traces and Prometheus metrics. The observability stack (Prometheus + Grafana) is defined in `docker/compose.observability.yml` and is optional for local dev.
 
 ## Tests
 
 `pytest-asyncio` is used; async tests are expected. Tests live in
 `apps/api/tests/` and cover orchestration primitives (`test_task_graph.py`,
 `test_router.py`), the tool layer (`test_openclaw.py`, `test_registry.py`),
-and a Hermes end-to-end suite (`test_orchestrator.py`) that monkey-patches
-`get_llm_provider` to inject a deterministic stub so the full
-`route → plan → run agents → merge` lifecycle runs offline.
+autonomy primitives (`test_autonomy.py`), and a Hermes end-to-end suite
+(`test_orchestrator.py`) that monkey-patches `get_llm_provider` to inject a
+deterministic stub so the full `route → plan → run agents → merge` lifecycle
+runs offline.
 
 Frontend smoke tests use Playwright (config at `playwright.config.ts`,
 specs under `tests/e2e/`). First-time setup:
