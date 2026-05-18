@@ -184,6 +184,43 @@ The reference implementation is intentionally minimal:
     offline development.
 \end{itemize}
 
+\section{Gemini-Specific Contributions}
+\label{sec:gemini}
+
+OneProduct Agent OS is built around Gemini~\cite{gemini2024} as the substrate
+for every cognitive surface, not merely as a text completion endpoint. We
+highlight five Gemini-native capabilities that the architecture relies on:
+
+\begin{itemize}
+  \item \textbf{Grounded Search.} Pricing and competitor agents call the
+    Gemini \texttt{googleSearch} tool (\texttt{web\_search\_grounded}) for
+    real-time price and competitor analysis. Returned URIs are surfaced as
+    citations in the audit log so downstream approvals are
+    decision-traceable~\cite{gemini_grounding2024}.
+  \item \textbf{Gemini Vision.} Product images are decomposed into
+    structured metadata (material, colour palette, style descriptors) via
+    multimodal prompts in \texttt{image\_analysis}; the same primitive
+    powers competitor teardown by reading screenshots of rival listings.
+  \item \textbf{Gemini Live API.} The Voice Supervisor
+    (\texttt{/ws/voice}) streams audio frames into the Gemini Live API and
+    relays partial transcripts to a Turkish intent router; recognised
+    intents (\emph{``fiyatları düşür''}, \emph{``stok yenile''}) dispatch
+    directly into Hermes without round-tripping through
+    text~\cite{gemini_live2024}.
+  \item \textbf{Embedding + pgvector memory.} Agent long-term memory is
+    backed by Gemini embeddings stored in a pgvector index; the
+    \texttt{memory\_search} and \texttt{knowledge\_search} tools serve
+    cosine-similarity retrieval to any agent that needs prior context.
+  \item \textbf{MockProvider fallback.} For hackathon and CI environments
+    where no \texttt{GEMINI\_API\_KEY} is present, a deterministic
+    \texttt{MockProvider} short-circuits every call site, keeping the full
+    DAG executable end-to-end without network access.
+\end{itemize}
+
+Together these primitives let a single product be operated across text,
+vision, image, voice, and retrieval modalities while preserving the
+auditability invariants of OpenClaw.
+
 \section{Related work}
 
 Toolformer~\cite{schick2023toolformer} introduced self-supervised tool use for a

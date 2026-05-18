@@ -66,3 +66,7 @@ export const selectLiveToolCount = (s: AppState): number =>
 
 export const selectMockToolCount = (s: AppState): number =>
   s.tools.filter((t) => t.mode !== 'live').length;
+
+/** Failed task count — surfaced as a Sidebar badge on "Görevler". */
+export const selectFailedTaskCount = (s: AppState): number =>
+  (s.tasks || []).filter((t: any) => t.status === 'failed' || t.status === 'FAILED').length;

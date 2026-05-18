@@ -10,26 +10,52 @@
     "input_schema": {
       "type": "object",
       "properties": {
-        "target_price": {"type": "number"},
-        "walk_away_price": {"type": "number"},
-        "moq": {"type": "integer"},
-        "lead_time_days": {"type": "integer"},
-        "max_rounds": {"type": "integer", "default": 5}
+        "target_price": {
+          "type": "number"
+        },
+        "walk_away_price": {
+          "type": "number"
+        },
+        "moq": {
+          "type": "integer"
+        },
+        "lead_time_days": {
+          "type": "integer"
+        },
+        "max_rounds": {
+          "type": "integer",
+          "default": 5
+        }
       },
-      "required": ["target_price", "walk_away_price"]
+      "required": [
+        "target_price",
+        "walk_away_price"
+      ]
     },
     "output_schema": {
       "type": "object",
       "properties": {
-        "rounds": {"type": "array"},
-        "final_price": {"type": "number"},
-        "outcome": {"type": "string"}
+        "rounds": {
+          "type": "array"
+        },
+        "final_price": {
+          "type": "number"
+        },
+        "outcome": {
+          "type": "string"
+        }
       }
     },
-    "allowed_agents": ["negotiation_agent", "product_development_agent"],
+    "allowed_agents": [
+      "negotiation_agent",
+      "product_development_agent"
+    ],
     "cost_estimate_usd": 0.004,
     "mode": "mock",
-    "tags": ["negotiation", "supplier"]
+    "tags": [
+      "negotiation",
+      "supplier"
+    ]
   },
   {
     "tool_id": "counter_offer_generator",
@@ -40,20 +66,41 @@
     "input_schema": {
       "type": "object",
       "properties": {
-        "current_offer": {"type": "number"},
-        "target": {"type": "number"},
-        "concession_style": {"type": "string", "default": "moderate"}
+        "current_offer": {
+          "type": "number"
+        },
+        "target": {
+          "type": "number"
+        },
+        "concession_style": {
+          "type": "string",
+          "default": "moderate"
+        }
       },
-      "required": ["current_offer", "target"]
+      "required": [
+        "current_offer",
+        "target"
+      ]
     },
     "output_schema": {
       "type": "object",
-      "properties": {"counter": {"type": "number"}, "rationale": {"type": "string"}}
+      "properties": {
+        "counter": {
+          "type": "number"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      }
     },
-    "allowed_agents": ["negotiation_agent"],
+    "allowed_agents": [
+      "negotiation_agent"
+    ],
     "cost_estimate_usd": 0.002,
     "mode": "mock",
-    "tags": ["negotiation"]
+    "tags": [
+      "negotiation"
+    ]
   },
   {
     "tool_id": "deal_evaluator",
@@ -64,19 +111,41 @@
     "input_schema": {
       "type": "object",
       "properties": {
-        "offer": {"type": "object"},
-        "batna": {"type": "object"}
+        "offer": {
+          "type": "object"
+        },
+        "batna": {
+          "type": "object"
+        }
       },
-      "required": ["offer"]
+      "required": [
+        "offer"
+      ]
     },
     "output_schema": {
       "type": "object",
-      "properties": {"decision": {"type": "string"}, "score": {"type": "number"}, "reasons": {"type": "array"}}
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "reasons": {
+          "type": "array"
+        }
+      }
     },
-    "allowed_agents": ["negotiation_agent", "autonomous_decision_agent"],
+    "allowed_agents": [
+      "negotiation_agent",
+      "autonomous_decision_agent"
+    ],
     "cost_estimate_usd": 0.002,
     "mode": "mock",
-    "tags": ["negotiation", "decision"]
+    "tags": [
+      "negotiation",
+      "decision"
+    ]
   },
   {
     "tool_id": "carrier_rate_comparator",
@@ -87,21 +156,49 @@
     "input_schema": {
       "type": "object",
       "properties": {
-        "origin": {"type": "string"},
-        "destination": {"type": "string"},
-        "weight_kg": {"type": "number"},
-        "desi": {"type": "number"}
+        "origin": {
+          "type": "string"
+        },
+        "destination": {
+          "type": "string"
+        },
+        "weight_kg": {
+          "type": "number"
+        },
+        "desi": {
+          "type": "number"
+        }
       },
-      "required": ["origin", "destination", "weight_kg"]
+      "required": [
+        "origin",
+        "destination",
+        "weight_kg"
+      ]
     },
     "output_schema": {
       "type": "object",
-      "properties": {"quotes": {"type": "array"}, "cheapest": {"type": "string"}, "fastest": {"type": "string"}}
+      "properties": {
+        "quotes": {
+          "type": "array"
+        },
+        "cheapest": {
+          "type": "string"
+        },
+        "fastest": {
+          "type": "string"
+        }
+      }
     },
-    "allowed_agents": ["logistics_agent", "operations_agent"],
+    "allowed_agents": [
+      "logistics_agent",
+      "operations_agent"
+    ],
     "cost_estimate_usd": 0.001,
     "mode": "mock",
-    "tags": ["logistics", "shipping"]
+    "tags": [
+      "logistics",
+      "shipping"
+    ]
   },
   {
     "tool_id": "route_optimizer",
@@ -112,19 +209,41 @@
     "input_schema": {
       "type": "object",
       "properties": {
-        "stops": {"type": "array"},
-        "vehicle_capacity_kg": {"type": "number", "default": 1500}
+        "stops": {
+          "type": "array"
+        },
+        "vehicle_capacity_kg": {
+          "type": "number",
+          "default": 1500
+        }
       },
-      "required": ["stops"]
+      "required": [
+        "stops"
+      ]
     },
     "output_schema": {
       "type": "object",
-      "properties": {"ordered_stops": {"type": "array"}, "total_distance_km": {"type": "number"}, "eta_hours": {"type": "number"}}
+      "properties": {
+        "ordered_stops": {
+          "type": "array"
+        },
+        "total_distance_km": {
+          "type": "number"
+        },
+        "eta_hours": {
+          "type": "number"
+        }
+      }
     },
-    "allowed_agents": ["logistics_agent"],
+    "allowed_agents": [
+      "logistics_agent"
+    ],
     "cost_estimate_usd": 0.003,
     "mode": "mock",
-    "tags": ["logistics", "routing"]
+    "tags": [
+      "logistics",
+      "routing"
+    ]
   },
   {
     "tool_id": "shipment_tracking_aggregator",
@@ -134,17 +253,37 @@
     "provider": "internal",
     "input_schema": {
       "type": "object",
-      "properties": {"tracking_numbers": {"type": "array"}},
-      "required": ["tracking_numbers"]
+      "properties": {
+        "tracking_numbers": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "tracking_numbers"
+      ]
     },
     "output_schema": {
       "type": "object",
-      "properties": {"shipments": {"type": "array"}, "delayed_count": {"type": "integer"}}
+      "properties": {
+        "shipments": {
+          "type": "array"
+        },
+        "delayed_count": {
+          "type": "integer"
+        }
+      }
     },
-    "allowed_agents": ["logistics_agent", "operations_agent", "support_agent"],
+    "allowed_agents": [
+      "logistics_agent",
+      "operations_agent",
+      "support_agent"
+    ],
     "cost_estimate_usd": 0.001,
     "mode": "mock",
-    "tags": ["logistics", "tracking"]
+    "tags": [
+      "logistics",
+      "tracking"
+    ]
   },
   {
     "tool_id": "dynamic_price_engine",
@@ -155,28 +294,56 @@
     "input_schema": {
       "type": "object",
       "properties": {
-        "sku": {"type": "string"},
-        "current_price": {"type": "number"},
-        "elasticity": {"type": "number", "default": -1.4},
-        "competitor_avg": {"type": "number"},
-        "stock_days": {"type": "integer"}
+        "sku": {
+          "type": "string"
+        },
+        "current_price": {
+          "type": "number"
+        },
+        "elasticity": {
+          "type": "number",
+          "default": -1.4
+        },
+        "competitor_avg": {
+          "type": "number"
+        },
+        "stock_days": {
+          "type": "integer"
+        }
       },
-      "required": ["sku", "current_price"]
+      "required": [
+        "sku",
+        "current_price"
+      ]
     },
     "output_schema": {
       "type": "object",
       "properties": {
-        "recommended_price": {"type": "number"},
-        "delta_pct": {"type": "number"},
-        "expected_revenue_lift_pct": {"type": "number"},
-        "confidence": {"type": "number"}
+        "recommended_price": {
+          "type": "number"
+        },
+        "delta_pct": {
+          "type": "number"
+        },
+        "expected_revenue_lift_pct": {
+          "type": "number"
+        },
+        "confidence": {
+          "type": "number"
+        }
       }
     },
-    "allowed_agents": ["dynamic_pricing_agent", "pricing_agent"],
+    "allowed_agents": [
+      "dynamic_pricing_agent",
+      "pricing_agent"
+    ],
     "requires_approval": true,
     "cost_estimate_usd": 0.003,
     "mode": "mock",
-    "tags": ["pricing", "dynamic"]
+    "tags": [
+      "pricing",
+      "dynamic"
+    ]
   },
   {
     "tool_id": "competitor_price_monitor",
@@ -186,17 +353,40 @@
     "provider": "internal",
     "input_schema": {
       "type": "object",
-      "properties": {"sku": {"type": "string"}, "rivals": {"type": "array"}},
-      "required": ["sku"]
+      "properties": {
+        "sku": {
+          "type": "string"
+        },
+        "rivals": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "sku"
+      ]
     },
     "output_schema": {
       "type": "object",
-      "properties": {"prices": {"type": "array"}, "alert": {"type": "string"}}
+      "properties": {
+        "prices": {
+          "type": "array"
+        },
+        "alert": {
+          "type": "string"
+        }
+      }
     },
-    "allowed_agents": ["dynamic_pricing_agent", "pricing_agent", "market_research_agent"],
+    "allowed_agents": [
+      "dynamic_pricing_agent",
+      "pricing_agent",
+      "market_research_agent"
+    ],
     "cost_estimate_usd": 0.001,
     "mode": "mock",
-    "tags": ["pricing", "monitoring"]
+    "tags": [
+      "pricing",
+      "monitoring"
+    ]
   },
   {
     "tool_id": "demand_signal_aggregator",
@@ -206,17 +396,40 @@
     "provider": "internal",
     "input_schema": {
       "type": "object",
-      "properties": {"sku": {"type": "string"}, "window_days": {"type": "integer", "default": 7}},
-      "required": ["sku"]
+      "properties": {
+        "sku": {
+          "type": "string"
+        },
+        "window_days": {
+          "type": "integer",
+          "default": 7
+        }
+      },
+      "required": [
+        "sku"
+      ]
     },
     "output_schema": {
       "type": "object",
-      "properties": {"demand_score": {"type": "number"}, "trend": {"type": "string"}}
+      "properties": {
+        "demand_score": {
+          "type": "number"
+        },
+        "trend": {
+          "type": "string"
+        }
+      }
     },
-    "allowed_agents": ["dynamic_pricing_agent", "analytics_agent"],
+    "allowed_agents": [
+      "dynamic_pricing_agent",
+      "analytics_agent"
+    ],
     "cost_estimate_usd": 0.001,
     "mode": "mock",
-    "tags": ["pricing", "demand"]
+    "tags": [
+      "pricing",
+      "demand"
+    ]
   },
   {
     "tool_id": "autonomy_policy_check",
@@ -227,20 +440,45 @@
     "input_schema": {
       "type": "object",
       "properties": {
-        "action_type": {"type": "string"},
-        "value": {"type": "number"},
-        "risk_level": {"type": "string", "default": "low"}
+        "action_type": {
+          "type": "string"
+        },
+        "value": {
+          "type": "number"
+        },
+        "risk_level": {
+          "type": "string",
+          "default": "low"
+        }
       },
-      "required": ["action_type"]
+      "required": [
+        "action_type"
+      ]
     },
     "output_schema": {
       "type": "object",
-      "properties": {"allowed": {"type": "boolean"}, "requires_approval": {"type": "boolean"}, "reason": {"type": "string"}}
+      "properties": {
+        "allowed": {
+          "type": "boolean"
+        },
+        "requires_approval": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
     },
-    "allowed_agents": ["autonomous_decision_agent", "supervisor"],
+    "allowed_agents": [
+      "autonomous_decision_agent",
+      "supervisor"
+    ],
     "cost_estimate_usd": 0.0,
-    "mode": "mock",
-    "tags": ["decision", "policy"]
+    "mode": "live",
+    "tags": [
+      "decision",
+      "policy"
+    ]
   },
   {
     "tool_id": "spawn_subagent",
@@ -265,22 +503,38 @@
           "description": "Maksimum maliyet (USD). Parent'ın kalanının %50'si ile sınırlanır."
         }
       },
-      "required": ["agent_id", "message"]
+      "required": [
+        "agent_id",
+        "message"
+      ]
     },
     "output_schema": {
       "type": "object",
       "properties": {
-        "child_task_id": {"type": "string"},
-        "status": {"type": "string"},
-        "summary": {"type": "string"},
-        "confidence": {"type": "number"},
-        "cost_usd": {"type": "number"}
+        "child_task_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number"
+        },
+        "cost_usd": {
+          "type": "number"
+        }
       }
     },
     "allowed_agents": [],
     "cost_estimate_usd": 0.0,
     "mode": "live",
-    "tags": ["delegation", "parallelization"]
+    "tags": [
+      "delegation",
+      "parallelization"
+    ]
   },
   {
     "tool_id": "decision_log_writer",
@@ -291,20 +545,42 @@
     "input_schema": {
       "type": "object",
       "properties": {
-        "decision_id": {"type": "string"},
-        "action": {"type": "string"},
-        "outcome": {"type": "string"},
-        "confidence": {"type": "number"}
+        "decision_id": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number"
+        }
       },
-      "required": ["action"]
+      "required": [
+        "action"
+      ]
     },
     "output_schema": {
       "type": "object",
-      "properties": {"logged": {"type": "boolean"}, "id": {"type": "string"}}
+      "properties": {
+        "logged": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        }
+      }
     },
-    "allowed_agents": ["autonomous_decision_agent"],
+    "allowed_agents": [
+      "autonomous_decision_agent"
+    ],
     "cost_estimate_usd": 0.0,
     "mode": "mock",
-    "tags": ["decision", "audit"]
+    "tags": [
+      "decision",
+      "audit"
+    ]
   }
 ]

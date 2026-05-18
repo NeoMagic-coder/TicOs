@@ -19,6 +19,7 @@ from apps.api.agents.registry import get_agent_registry
 from apps.api.core.config import get_settings
 from apps.api.core.db import init_db
 from apps.api.core.llm.image import IMAGES_DIR, generate_image
+from apps.api.core.llm.provider import get_llm_provider
 from apps.api.core.logging import get_logger, setup_logging
 from apps.api.core.db.engine import session_scope
 from apps.api.core.db.models import AgentStatRow
@@ -35,15 +36,29 @@ from apps.api.core.openclaw.registry import get_registry
 from apps.api.core.scheduler import start_scheduler, stop_scheduler
 from apps.api.routes import agents as agents_route
 from apps.api.routes import approvals as approvals_route
+from apps.api.routes import brand as brand_route
 from apps.api.routes import chat as chat_route
+from apps.api.routes import dashboard as dashboard_route
+from apps.api.routes import demo as demo_route
+from apps.api.routes import graph as graph_route
+from apps.api.routes import grounding as grounding_route
+from apps.api.routes import growth as growth_route
+from apps.api.routes import integrations as integrations_route
 from apps.api.routes import knowledge as knowledge_route
+from apps.api.routes import llm as llm_route
 from apps.api.routes import automations as automations_route
+from apps.api.routes import goals as goals_route
+from apps.api.routes import org as org_route
+from apps.api.routes import policies as policies_route
+from apps.api.routes import pricing as pricing_route
+from apps.api.routes import products as products_route
 from apps.api.routes import research as research_route
 from apps.api.routes import rpc as rpc_route
 from apps.api.routes import scheduler as scheduler_route
 from apps.api.routes import skills as skills_route
 from apps.api.routes import tasks as tasks_route
 from apps.api.routes import tools as tools_route
+from apps.api.routes import voice as voice_route
 from apps.api.routes import webhooks as webhooks_route
 from apps.api.tools.live import register_all as register_live_tools
 
@@ -55,6 +70,14 @@ async def lifespan(_app: FastAPI):
     log = get_logger("oneproduct.boot")
 
     init_db()
+
+    # Paperclip-style org chart seed (idempotent — only inserts missing rows).
+    from apps.api.core.org import seed_default_org
+
+    try:
+        seed_default_org()
+    except Exception as exc:  # never block boot on seed failure
+        log.warning("org.seed.failed", error=str(exc)[:200])
 
     registry = get_registry()
     registry.load_manifests()
@@ -163,6 +186,27 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Optional API key gate. No-op when settings.api_key is empty (local dev).
+    if settings.api_key:
+        from fastapi import Request
+        from fastapi.responses import JSONResponse
+
+        _EXEMPT_PATHS = ("/health", "/metrics", "/docs", "/openapi.json", "/redoc")
+
+        @app.middleware("http")
+        async def _api_key_gate(request: Request, call_next):
+            path = request.url.path
+            if path.startswith(_EXEMPT_PATHS) or request.method == "OPTIONS":
+                return await call_next(request)
+            if not path.startswith("/api/"):
+                return await call_next(request)
+            supplied = request.headers.get("x-api-key", "")
+            if supplied != settings.api_key:
+                return JSONResponse(
+                    {"detail": "missing or invalid X-API-Key"}, status_code=401
+                )
+            return await call_next(request)
+
     setup_telemetry(app)
 
     @app.middleware("http")
@@ -219,7 +263,22 @@ def create_app() -> FastAPI:
     app.include_router(rpc_route.router, prefix="/api/v1")
     app.include_router(research_route.router, prefix="/api/v1")
     app.include_router(skills_route.router, prefix="/api/v1")
+    app.include_router(brand_route.router, prefix="/api/v1")
+    app.include_router(pricing_route.router, prefix="/api/v1")
+    app.include_router(grounding_route.router, prefix="/api/v1")
+    app.include_router(products_route.router, prefix="/api/v1")
+    app.include_router(growth_route.router, prefix="/api/v1")
+    app.include_router(policies_route.router, prefix="/api/v1")
+    app.include_router(policies_route.autonomy_router, prefix="/api/v1")
+    app.include_router(dashboard_route.router, prefix="/api/v1")
+    app.include_router(demo_route.router, prefix="/api/v1")
+    app.include_router(graph_route.router, prefix="/api/v1")
+    app.include_router(integrations_route.router, prefix="/api/v1")
+    app.include_router(org_route.router, prefix="/api/v1")
+    app.include_router(goals_route.router, prefix="/api/v1")
+    app.include_router(llm_route.router, prefix="/api/v1")
     app.include_router(webhooks_route.router)  # /webhooks/*  (no /api/v1 prefix)
+    app.include_router(voice_route.router)     # /ws/voice    (websocket, no prefix)
 
     @app.get("/api/v1/backends", tags=["system"])
     async def list_backends() -> list[dict[str, Any]]:
@@ -255,7 +314,10 @@ def create_app() -> FastAPI:
             "environment": settings.environment,
             "agents": len(agents.all()),
             "tools": len(tools.all()),
-            "llm": "gemini" if settings.gemini_api_key else "mock",
+            "llm": type(get_llm_provider()).__name__.replace("Provider", "").lower(),
+            "_dbg_provider_class": type(get_llm_provider()).__name__,
+            "_dbg_llm_provider_setting": get_settings().llm_provider,
+            "_dbg_openrouter_key_set": bool(get_settings().openrouter_api_key),
         }
 
     return app

@@ -13,7 +13,7 @@ test.describe('Demo fixtures', () => {
     // After onboarding, dashboard should be rendered (all-zero state).
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
 
-    const demoBtn = page.getByRole('button', { name: /Demo veriyle doldur/i });
+    const demoBtn = page.getByRole('button', { name: /Demo verisi yükle/i });
     await expect(demoBtn).toBeVisible();
   });
 
@@ -21,7 +21,7 @@ test.describe('Demo fixtures', () => {
     await stubBackend(page);
     await completeOnboarding(page);
 
-    await page.getByRole('button', { name: /Demo veriyle doldur/i }).click();
+    await page.getByRole('button', { name: /Demo verisi yükle/i }).click();
 
     // Dashboard KPI replaces ₺0.
     await expect(page.getByText(/₺8\.200|₺8,200|8\.200/)).toBeVisible();

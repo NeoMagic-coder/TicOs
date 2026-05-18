@@ -9,17 +9,36 @@
     "timeout_ms": 25000,
     "input_schema": {
       "type": "object",
-      "properties": {"date_range": {"type": "string", "default": "last_30d"}, "metrics": {"type": "array"}},
+      "properties": {
+        "date_range": {
+          "type": "string",
+          "default": "last_30d"
+        },
+        "metrics": {
+          "type": "array"
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"report": {"type": "object"}}
+      "properties": {
+        "report": {
+          "type": "object"
+        }
+      }
     },
-    "allowed_agents": ["analytics_agent", "marketing_agent", "supervisor"],
+    "allowed_agents": [
+      "analytics_agent",
+      "marketing_agent",
+      "supervisor"
+    ],
     "cost_estimate_usd": 0.0,
     "mode": "mock",
-    "tags": ["analytics", "ga4"]
+    "tags": [
+      "analytics",
+      "ga4"
+    ]
   },
   {
     "tool_id": "analytics_sales_summary",
@@ -31,17 +50,38 @@
     "timeout_ms": 12000,
     "input_schema": {
       "type": "object",
-      "properties": {"period": {"type": "string", "default": "last_7d"}},
+      "properties": {
+        "period": {
+          "type": "string",
+          "default": "last_7d"
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"revenue": {"type": "number"}, "orders": {"type": "integer"}, "aov": {"type": "number"}}
+      "properties": {
+        "revenue": {
+          "type": "number"
+        },
+        "orders": {
+          "type": "integer"
+        },
+        "aov": {
+          "type": "number"
+        }
+      }
     },
-    "allowed_agents": ["analytics_agent", "supervisor"],
+    "allowed_agents": [
+      "analytics_agent",
+      "supervisor"
+    ],
     "cost_estimate_usd": 0.001,
     "mode": "mock",
-    "tags": ["analytics", "sales"]
+    "tags": [
+      "analytics",
+      "sales"
+    ]
   },
   {
     "tool_id": "trend_detector",
@@ -53,17 +93,31 @@
     "timeout_ms": 12000,
     "input_schema": {
       "type": "object",
-      "properties": {"series": {"type": "array"}},
+      "properties": {
+        "series": {
+          "type": "array"
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"trends": {"type": "array"}}
+      "properties": {
+        "trends": {
+          "type": "array"
+        }
+      }
     },
-    "allowed_agents": ["analytics_agent", "growth_agent"],
+    "allowed_agents": [
+      "analytics_agent",
+      "growth_agent"
+    ],
     "cost_estimate_usd": 0.002,
-    "mode": "mock",
-    "tags": ["analytics", "trend"]
+    "mode": "live",
+    "tags": [
+      "analytics",
+      "trend"
+    ]
   },
   {
     "tool_id": "anomaly_detector",
@@ -75,17 +129,35 @@
     "timeout_ms": 12000,
     "input_schema": {
       "type": "object",
-      "properties": {"series": {"type": "array"}, "threshold": {"type": "number", "default": 2.5}},
+      "properties": {
+        "series": {
+          "type": "array"
+        },
+        "threshold": {
+          "type": "number",
+          "default": 2.5
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"anomalies": {"type": "array"}}
+      "properties": {
+        "anomalies": {
+          "type": "array"
+        }
+      }
     },
-    "allowed_agents": ["analytics_agent", "operations_agent"],
+    "allowed_agents": [
+      "analytics_agent",
+      "operations_agent"
+    ],
     "cost_estimate_usd": 0.002,
-    "mode": "mock",
-    "tags": ["analytics", "anomaly"]
+    "mode": "live",
+    "tags": [
+      "analytics",
+      "anomaly"
+    ]
   },
   {
     "tool_id": "listing_compliance_check",
@@ -97,17 +169,38 @@
     "timeout_ms": 12000,
     "input_schema": {
       "type": "object",
-      "properties": {"listing": {"type": "object"}, "marketplace": {"type": "string"}},
+      "properties": {
+        "listing": {
+          "type": "object"
+        },
+        "marketplace": {
+          "type": "string"
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"compliant": {"type": "boolean"}, "issues": {"type": "array"}}
+      "properties": {
+        "compliant": {
+          "type": "boolean"
+        },
+        "issues": {
+          "type": "array"
+        }
+      }
     },
-    "allowed_agents": ["compliance_agent", "catalog_agent", "supervisor"],
+    "allowed_agents": [
+      "compliance_agent",
+      "catalog_agent",
+      "supervisor"
+    ],
     "cost_estimate_usd": 0.001,
-    "mode": "mock",
-    "tags": ["compliance", "marketplace"]
+    "mode": "live",
+    "tags": [
+      "compliance",
+      "marketplace"
+    ]
   },
   {
     "tool_id": "forbidden_word_scanner",
@@ -119,17 +212,32 @@
     "timeout_ms": 6000,
     "input_schema": {
       "type": "object",
-      "properties": {"text": {"type": "string"}},
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"hits": {"type": "array"}}
+      "properties": {
+        "hits": {
+          "type": "array"
+        }
+      }
     },
-    "allowed_agents": ["compliance_agent", "content_seo_agent", "catalog_agent"],
+    "allowed_agents": [
+      "compliance_agent",
+      "content_seo_agent",
+      "catalog_agent"
+    ],
     "cost_estimate_usd": 0.0,
-    "mode": "mock",
-    "tags": ["compliance", "moderation"]
+    "mode": "live",
+    "tags": [
+      "compliance",
+      "moderation"
+    ]
   },
   {
     "tool_id": "kvkk_compliance_checker",
@@ -141,17 +249,34 @@
     "timeout_ms": 15000,
     "input_schema": {
       "type": "object",
-      "properties": {"page_url": {"type": "string"}},
+      "properties": {
+        "page_url": {
+          "type": "string"
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"compliant": {"type": "boolean"}, "issues": {"type": "array"}}
+      "properties": {
+        "compliant": {
+          "type": "boolean"
+        },
+        "issues": {
+          "type": "array"
+        }
+      }
     },
-    "allowed_agents": ["legal_compliance_agent", "supervisor"],
+    "allowed_agents": [
+      "legal_compliance_agent",
+      "supervisor"
+    ],
     "cost_estimate_usd": 0.002,
     "mode": "mock",
-    "tags": ["legal", "kvkk"]
+    "tags": [
+      "legal",
+      "kvkk"
+    ]
   },
   {
     "tool_id": "return_policy_generator",
@@ -163,18 +288,32 @@
     "timeout_ms": 15000,
     "input_schema": {
       "type": "object",
-      "properties": {"return_window_days": {"type": "integer", "default": 14}},
+      "properties": {
+        "return_window_days": {
+          "type": "integer",
+          "default": 14
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"policy_text": {"type": "string"}}
+      "properties": {
+        "policy_text": {
+          "type": "string"
+        }
+      }
     },
-    "allowed_agents": ["legal_compliance_agent"],
+    "allowed_agents": [
+      "legal_compliance_agent"
+    ],
     "requires_approval": true,
     "cost_estimate_usd": 0.004,
-    "mode": "mock",
-    "tags": ["legal", "policy"]
+    "mode": "live",
+    "tags": [
+      "legal",
+      "policy"
+    ]
   },
   {
     "tool_id": "privacy_policy_generator",
@@ -186,17 +325,33 @@
     "timeout_ms": 18000,
     "input_schema": {
       "type": "object",
-      "properties": {"company_name": {"type": "string"}, "data_categories": {"type": "array"}},
+      "properties": {
+        "company_name": {
+          "type": "string"
+        },
+        "data_categories": {
+          "type": "array"
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"policy_text": {"type": "string"}}
+      "properties": {
+        "policy_text": {
+          "type": "string"
+        }
+      }
     },
-    "allowed_agents": ["legal_compliance_agent"],
+    "allowed_agents": [
+      "legal_compliance_agent"
+    ],
     "requires_approval": true,
     "cost_estimate_usd": 0.005,
     "mode": "mock",
-    "tags": ["legal", "privacy"]
+    "tags": [
+      "legal",
+      "privacy"
+    ]
   }
 ]

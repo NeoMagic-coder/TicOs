@@ -142,6 +142,7 @@ class TaskCreate(BaseModel):
     title: str
     description: str = ""
     goal: str = ""
+    goal_id: str | None = None
     priority: TaskPriority = TaskPriority.medium
     context: dict[str, Any] = Field(default_factory=dict)
     deadline: datetime | None = None
@@ -153,6 +154,7 @@ class Task(BaseModel):
     title: str
     description: str
     goal: str
+    goal_id: str | None = None
     status: TaskStatus = TaskStatus.created
     priority: TaskPriority = TaskPriority.medium
     assigned_agent_id: str | None = None
@@ -204,6 +206,10 @@ class ChatResponse(BaseModel):
     tools_used: list[str] = Field(default_factory=list)
     thinking: str | None = None
     agent_outputs: list[AgentOutput] = Field(default_factory=list)
+    # True when the underlying LLM was MockProvider (no API key) or fell
+    # back from Gemini after quota exhaustion. UI shows a persistent badge.
+    llm_degraded: bool = False
+    llm_degraded_reason: str | None = None
 
 
 class ToolExecutionRequest(BaseModel):
@@ -211,6 +217,126 @@ class ToolExecutionRequest(BaseModel):
     agent_id: str
     task_id: str | None = None
     input: dict[str, Any] = Field(default_factory=dict)
+
+
+class OrgUnit(BaseModel):
+    id: str
+    parent_id: str | None = None
+    name: str
+    description: str = ""
+    head_agent_id: str | None = None
+    icon: str = "🏢"
+    color: str = "#64748b"
+    sort_order: int = 0
+    member_agent_ids: list[str] = Field(default_factory=list)
+    child_unit_ids: list[str] = Field(default_factory=list)
+
+
+class Goal(BaseModel):
+    id: str
+    parent_goal_id: str | None = None
+    title: str
+    description: str = ""
+    owner_agent_id: str | None = None
+    owner_org_unit_id: str | None = None
+    target_metric: str = ""
+    target_value: float | None = None
+    current_value: float | None = None
+    status: Literal["active", "paused", "done", "abandoned"] = "active"
+    deadline: datetime | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class GoalCreate(BaseModel):
+    title: str
+    description: str = ""
+    parent_goal_id: str | None = None
+    owner_agent_id: str | None = None
+    owner_org_unit_id: str | None = None
+    target_metric: str = ""
+    target_value: float | None = None
+    deadline: datetime | None = None
+
+
+class GoalNode(BaseModel):
+    """Recursive tree view of a goal and its descendants."""
+
+    goal: Goal
+    children: list["GoalNode"] = Field(default_factory=list)
+    task_count: int = 0
+
+
+class AgentBudget(BaseModel):
+    agent_id: str
+    month: str  # "YYYY-MM"
+    limit_usd: float = 0.0
+    spent_usd: float = 0.0
+    warn_threshold_pct: int = 80
+    remaining_usd: float = 0.0
+    pct_used: float = 0.0
+    exhausted: bool = False
+    last_spend_at: datetime | None = None
+
+
+class AgentBudgetUpdate(BaseModel):
+    limit_usd: float = Field(ge=0.0)
+    warn_threshold_pct: int = Field(default=80, ge=0, le=100)
+
+
+class AgentLLMConfig(BaseModel):
+    """Per-agent LLM model + provider override (serialised form)."""
+
+    agent_id: str
+    provider: Literal["gemini", "openrouter", "openai_compatible", "mock"] = "openrouter"
+    model: str = ""
+    base_url: str = ""
+    api_key_env: str = ""
+    temperature: float = 0.7
+    max_tokens: int = 1500
+    enabled: bool = False
+    # Computed, read-only — whether the referenced api_key_env actually
+    # resolves to a non-empty value in the running process.
+    api_key_present: bool = False
+    updated_at: datetime | None = None
+
+
+class AgentLLMConfigUpdate(BaseModel):
+    provider: Literal["gemini", "openrouter", "openai_compatible", "mock"] = "openrouter"
+    model: str = ""
+    base_url: str = ""
+    api_key_env: str = ""
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=1500, ge=1, le=32000)
+    enabled: bool = False
+
+
+class LLMProviderInfo(BaseModel):
+    """Metadata about a supported provider for the UI's selector."""
+
+    id: str
+    label: str
+    requires_base_url: bool = False
+    default_base_url: str = ""
+    default_model: str = ""
+    suggested_models: list[str] = Field(default_factory=list)
+    default_api_key_env: str = ""
+    api_key_present: bool = False
+
+
+class LLMTestRequest(BaseModel):
+    prompt: str = Field(default="Bir kelime ile cevap ver: PING.", max_length=2000)
+    max_tokens: int = Field(default=40, ge=1, le=500)
+
+
+class LLMTestResponse(BaseModel):
+    ok: bool
+    provider: str
+    model: str
+    text: str
+    tokens_used: int = 0
+    duration_ms: int = 0
+    error: str | None = None
 
 
 class ToolExecutionResult(BaseModel):
@@ -222,3 +348,6 @@ class ToolExecutionResult(BaseModel):
     error: str | None = None
     degraded: bool = False
     degraded_reason: str | None = None
+
+
+GoalNode.model_rebuild()

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from apps.api.core.observability.telemetry import (
     AGENT_DURATION,
+    CRITIC_SCORES,
     LLM_REQUESTS,
     LLM_TOKENS,
     REQUEST_DURATION,
@@ -28,6 +29,7 @@ from apps.api.core.observability.telemetry import (
 
 __all__ = [
     "AGENT_DURATION",
+    "CRITIC_SCORES",
     "LLM_REQUESTS",
     "LLM_TOKENS",
     "REQUEST_DURATION",

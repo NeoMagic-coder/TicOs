@@ -79,10 +79,26 @@ def with_breaker(
 
     async def wrapped(payload: dict[str, Any]) -> dict[str, Any]:
         if breaker.current_state == pybreaker.STATE_OPEN:
-            log.warning("breaker.open.short_circuit", tool_id=tool_id)
-            data = await mock_fallback(payload)
-            _set_status(tool_id, degraded=True, reason="circuit_open")
-            return _degraded(data, "circuit_open")
+            # Promote OPEN → HALF_OPEN ourselves once reset_timeout has elapsed.
+            # We can't use pybreaker's `before_call` because it both transitions
+            # *and* invokes the probe synchronously, which doesn't fit our
+            # awaitable adapter contract.
+            from datetime import UTC, datetime, timedelta
+            opened_at = breaker._state_storage.opened_at
+            timeout = timedelta(seconds=breaker.reset_timeout)
+            elapsed = opened_at is not None and (
+                # pybreaker stores naive UTC; compare like-for-like.
+                datetime.utcnow() >= opened_at + timeout  # type: ignore[operator]
+            )
+            if not elapsed:
+                log.warning("breaker.open.short_circuit", tool_id=tool_id)
+                data = await mock_fallback(payload)
+                _set_status(tool_id, degraded=True, reason="circuit_open")
+                return _degraded(data, "circuit_open")
+            # Reset window elapsed — transition to HALF_OPEN and let this
+            # call serve as the trial.
+            log.info("breaker.half_open.trial", tool_id=tool_id)
+            breaker.half_open()
 
         # pybreaker's built-in ``call_async`` requires tornado; we run the
         # coroutine ourselves and update the breaker state via its public

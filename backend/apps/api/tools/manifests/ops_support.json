@@ -9,17 +9,35 @@
     "timeout_ms": 15000,
     "input_schema": {
       "type": "object",
-      "properties": {"status": {"type": "string"}, "limit": {"type": "integer", "default": 50}},
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer",
+          "default": 50
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"orders": {"type": "array"}}
+      "properties": {
+        "orders": {
+          "type": "array"
+        }
+      }
     },
-    "allowed_agents": ["operations_agent", "support_agent", "analytics_agent"],
+    "allowed_agents": [
+      "operations_agent",
+      "support_agent",
+      "analytics_agent"
+    ],
     "cost_estimate_usd": 0.0,
     "mode": "mock",
-    "tags": ["order"]
+    "tags": [
+      "order"
+    ]
   },
   {
     "tool_id": "stock_levels_query",
@@ -31,17 +49,30 @@
     "timeout_ms": 10000,
     "input_schema": {
       "type": "object",
-      "properties": {"sku": {"type": "string"}},
+      "properties": {
+        "sku": {
+          "type": "string"
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"levels": {"type": "array"}}
+      "properties": {
+        "levels": {
+          "type": "array"
+        }
+      }
     },
-    "allowed_agents": ["operations_agent", "analytics_agent"],
+    "allowed_agents": [
+      "operations_agent",
+      "analytics_agent"
+    ],
     "cost_estimate_usd": 0.0,
     "mode": "mock",
-    "tags": ["stock"]
+    "tags": [
+      "stock"
+    ]
   },
   {
     "tool_id": "stock_forecast",
@@ -53,17 +84,38 @@
     "timeout_ms": 15000,
     "input_schema": {
       "type": "object",
-      "properties": {"sku": {"type": "string"}, "lead_time_days": {"type": "integer", "default": 14}},
+      "properties": {
+        "sku": {
+          "type": "string"
+        },
+        "lead_time_days": {
+          "type": "integer",
+          "default": 14
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"reorder_point": {"type": "integer"}, "days_left": {"type": "integer"}}
+      "properties": {
+        "reorder_point": {
+          "type": "integer"
+        },
+        "days_left": {
+          "type": "integer"
+        }
+      }
     },
-    "allowed_agents": ["operations_agent", "supervisor"],
+    "allowed_agents": [
+      "operations_agent",
+      "supervisor"
+    ],
     "cost_estimate_usd": 0.002,
-    "mode": "mock",
-    "tags": ["stock", "forecast"]
+    "mode": "live",
+    "tags": [
+      "stock",
+      "forecast"
+    ]
   },
   {
     "tool_id": "support_inbox_fetch",
@@ -75,17 +127,31 @@
     "timeout_ms": 12000,
     "input_schema": {
       "type": "object",
-      "properties": {"limit": {"type": "integer", "default": 25}},
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "default": 25
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"tickets": {"type": "array"}}
+      "properties": {
+        "tickets": {
+          "type": "array"
+        }
+      }
     },
-    "allowed_agents": ["support_agent", "supervisor"],
+    "allowed_agents": [
+      "support_agent",
+      "supervisor"
+    ],
     "cost_estimate_usd": 0.0,
     "mode": "mock",
-    "tags": ["support"]
+    "tags": [
+      "support"
+    ]
   },
   {
     "tool_id": "sentiment_analyzer",
@@ -97,17 +163,35 @@
     "timeout_ms": 6000,
     "input_schema": {
       "type": "object",
-      "properties": {"text": {"type": "string"}},
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"label": {"type": "string"}, "score": {"type": "number"}}
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        }
+      }
     },
-    "allowed_agents": ["support_agent", "review_reputation_agent", "analytics_agent"],
+    "allowed_agents": [
+      "support_agent",
+      "review_reputation_agent",
+      "analytics_agent"
+    ],
     "cost_estimate_usd": 0.001,
-    "mode": "mock",
-    "tags": ["support", "nlp"]
+    "mode": "live",
+    "tags": [
+      "support",
+      "nlp"
+    ]
   },
   {
     "tool_id": "draft_reply_generator",
@@ -119,17 +203,34 @@
     "timeout_ms": 12000,
     "input_schema": {
       "type": "object",
-      "properties": {"message": {"type": "string"}, "tone": {"type": "string", "default": "empathetic"}},
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "tone": {
+          "type": "string",
+          "default": "empathetic"
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"reply": {"type": "string"}}
+      "properties": {
+        "reply": {
+          "type": "string"
+        }
+      }
     },
-    "allowed_agents": ["support_agent"],
+    "allowed_agents": [
+      "support_agent"
+    ],
     "requires_approval": true,
     "cost_estimate_usd": 0.004,
-    "mode": "mock",
-    "tags": ["support", "generation"]
+    "mode": "live",
+    "tags": [
+      "support",
+      "generation"
+    ]
   }
 ]

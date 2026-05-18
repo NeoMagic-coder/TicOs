@@ -3,11 +3,12 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AgentSpec, Task, Approval, ToolManifest, KnowledgeDocument, ChatMessage, DashboardSummary, AuditLog, Integration, OnboardedProduct, ProductReview, Influencer, GrowthExperiment, EmailFlow, BrandIdentity, ProductEconomicsSnapshot, Skill } from '@/types';
 import { agents as seedAgents } from '@/data/agents';
 import { tools as seedTools } from '@/data/tools';
-import { seedTasks, seedApprovals, seedKnowledge, seedAuditLogs, seedIntegrations, seedChatHistory, makeDashboardForProduct } from '@/data/seed';
+import { seedTasks, seedApprovals, seedKnowledge, seedAuditLogs, seedIntegrations, seedChatHistory, makeDashboardForProduct, makeDemoDashboardForProduct } from '@/data/seed';
 import { seedOnboardedProduct, seedReviews, seedInfluencers, seedExperiments, seedEmailFlows } from '@/data/oneproduct';
 import { callGemini, isGeminiConfigured } from '@/lib/gemini';
 import { BASE_URL, chatBackend, chatWithFallback, backendReachable, estimateApprovalImpact as estimateApprovalImpactApi, resolveBackendUrl, streamChatBackend, type ChatBackendResponse, type ChatStreamEvent } from '@/lib/api';
 import { v4 as uuidv4 } from 'uuid';
+import { pushToast } from '@/components/AOS/Toast';
 
 const ALLOWED_RISK = new Set(['low', 'medium', 'high', 'critical']);
 
@@ -35,7 +36,7 @@ function productBrief(p: OnboardedProduct | null): string {
   const channels = p.channels?.length ? p.channels.join(', ') : '—';
   const priorities = p.priorities?.length ? p.priorities.join(', ') : '—';
   return (
-    `[Aktif ürün] ${p.product_name} · Kategori: ${p.category} · Aşama: ${p.stage} · ` +
+    `Aktif ürün: ${p.product_name} · Kategori: ${p.category} · Aşama: ${p.stage} · ` +
     `Pazar: ${p.target_market} · Kanallar: ${channels} · Bütçe: ${p.monthly_budget_band}/ay · ` +
     `Öncelikler: ${priorities}`
   );
@@ -118,9 +119,35 @@ const PAGE_ALIASES: Record<string, string> = {
  *  Uses simple substring matching instead of \b word boundaries because
  *  Turkish agglutination appends case suffixes (-a, -e, -ı, -ları, etc.)
  *  that break ASCII word-boundary logic. */
+// Slash command registry — `/foo args` → intent + params. Keeps the dock's
+// quick buttons honest (each chip now dispatches a real action instead of
+// just prefilling the input box).
+const SLASH_COMMANDS: Record<string, (rest: string) => { intent: string; params?: Record<string, string> } | null> = {
+  plan:     () => ({ intent: 'navigate', params: { page: 'graph' } }),
+  price:    () => ({ intent: 'regenerate_pricing' }),
+  pricing:  () => ({ intent: 'regenerate_pricing' }),
+  brand:    () => ({ intent: 'regenerate_brand' }),
+  reviews:  () => ({ intent: 'draft_review_responses' }),
+  reorder:  () => ({ intent: 'navigate', params: { page: 'pricing' } }),
+  approve:  () => ({ intent: 'approve_all' }),
+  reject:   () => ({ intent: 'reject_all' }),
+  sync:     () => ({ intent: 'sync_all_integrations' }),
+  reset:    () => ({ intent: 'reset_all' }),
+  debug:    () => ({ intent: 'toggle_debug' }),
+};
+
 function detectIntent(raw: string): { intent: string; params?: Record<string, string> } | null {
   const t = raw.toLowerCase().trim();
   if (!t) return null;
+
+  // ── Slash commands ──────────────────────────────────────────────────────
+  if (t.startsWith('/')) {
+    const [head, ...rest] = t.slice(1).split(/\s+/);
+    const cmd = SLASH_COMMANDS[head];
+    if (cmd) return cmd(rest.join(' '));
+    // Unknown slash command — fall through so the message is sent verbatim
+    // (Hermes can still try to interpret it).
+  }
 
   const has = (...words: string[]) => words.some((w) => t.includes(w));
   const match = (re: RegExp) => re.test(t);
@@ -228,6 +255,7 @@ export interface AppState {
 
   // Approvals
   approvals: Approval[];
+  ingestExternalApproval: (apv: any) => void;
   approveItem: (id: string, note?: string) => void;
   rejectItem: (id: string, note: string) => void;
   estimateApprovalImpact: (id: string) => Promise<void>;
@@ -250,7 +278,15 @@ export interface AppState {
   // Chat
   chatMessages: ChatMessage[];
   isThinking: boolean;
-  chatProgress: { event: string; agent_id?: string; tool_id?: string; ts: number; label: string }[];
+  /** Backend last-response marker — true when MockProvider was used (no
+   *  GEMINI_API_KEY) or Gemini fell back due to quota. UI surfaces a badge. */
+  llmDegraded: boolean;
+  llmDegradedReason: string | null;
+  chatProgress: { event: string; agent_id?: string; tool_id?: string; ts: number; label: string; score?: number; reason?: string; confidence?: number; cost_usd?: number }[];
+  /** Frozen chatProgress snapshots per task_id so the Graph page can replay a
+   *  completed task's DAG instead of going blank as soon as the next prompt
+   *  starts (#26). */
+  taskProgressSnapshots: Record<string, { event: string; agent_id?: string; tool_id?: string; ts: number; label: string; score?: number; reason?: string }[]>;
   recentCommands: string[];
   commandHistory: string[];
   addChatMessage: (msg: Partial<ChatMessage>) => void;
@@ -265,6 +301,7 @@ export interface AppState {
   // Audit Logs
   auditLogs: AuditLog[];
   addAuditLog: (log: Partial<AuditLog>) => void;
+  clearAuditLogs: () => void;
 
   // Integrations
   integrations: Integration[];
@@ -276,7 +313,20 @@ export interface AppState {
   onboardedProduct: OnboardedProduct | null;
   setOnboardingStep: (step: number) => void;
   updateOnboardingDraft: (patch: Partial<OnboardedProduct>) => void;
+  resetOnboardingDraft: () => void;
   completeOnboarding: () => void;
+  /** Reset the onboarding draft + step and route the app back to the wizard
+   *  without losing existing products. Used by the sidebar "+ Yeni ürün ekle"
+   *  shortcut. */
+  startNewProductOnboarding: () => void;
+  /** Phase 3 re-hydration. Pulls `/api/v1/products` and the active product's
+   *  latest dashboard snapshot from the backend so a page reload restores
+   *  what the user had on screen. */
+  hydrateFromBackend: () => Promise<void>;
+  /** Soft reset: clear transient state (chat, progress, audit) while keeping
+   *  products, brand identity and onboarding history. Used by sidebar
+   *  "Sayfayı sıfırla". */
+  resetTransientState: () => void;
   resetOnboarding: () => void;
 
   // OneProduct — Brand Identity (agent-generated, per active product)
@@ -290,6 +340,7 @@ export interface AppState {
   productEconomicsLoading: boolean;
   productEconomicsError: string | null;
   regenerateProductEconomics: () => Promise<void>;
+  setProductEconomics: (econ: ProductEconomicsSnapshot | null) => void;
 
   // OneProduct — Reviews
   reviews: ProductReview[];
@@ -309,8 +360,9 @@ export interface AppState {
   publishEmailFlow: (id: string) => void;
 
   // Integrations actions
-  syncIntegration: (id: string) => void;
-  connectIntegration: (platform: string, icon: string) => void;
+  syncIntegration: (id: string) => Promise<void>;
+  fetchIntegrations: () => Promise<void>;
+  connectIntegration: (platform: string, icon: string) => Promise<void>;
 
   // Helper: jump to chat with a prefilled question (used by buttons across pages)
   quickAsk: (content: string) => void;
@@ -338,6 +390,10 @@ export interface AppState {
   products: OnboardedProduct[];
   switchToProduct: (productName: string) => void;
   addProductToWorkspace: (product: OnboardedProduct) => void;
+  /** Removes a product from the workspace. Best-effort DELETE to the backend
+   *  registry; if the removed product was active, switches to the next
+   *  available one (or clears `onboardedProduct` if list becomes empty). */
+  removeProduct: (productName: string) => Promise<void>;
 
   // Demo / fixture loading
   loadDemoFixtures: () => void;
@@ -439,17 +495,42 @@ export const useStore = create<AppState>()(persist((set, get) => ({
 
   // Approvals
   approvals: seedApprovals,
+  ingestExternalApproval: (apv: any) => {
+    if (!apv?.id) return;
+    set((s) => {
+      if (s.approvals.some((a) => a.id === apv.id)) return s;
+      const normalized: any = {
+        id: apv.id,
+        agent_id: apv.requester || apv.agent_id || 'system',
+        action: apv.title || apv.action || 'Onay',
+        title: apv.title || apv.action || 'Onay',
+        kind: apv.type || apv.kind || 'genel',
+        rationale: apv.rationale || '',
+        risk_level: apv.risk || 'medium',
+        confidence: apv.confidence ?? 0.85,
+        status: 'pending',
+        change_summary: apv.delta || '',
+        tools_used: Array.isArray(apv.tools) ? apv.tools : [],
+        created_at: new Date().toISOString(),
+      };
+      return { approvals: [normalized, ...s.approvals] };
+    });
+  },
   approveItem: (id, note) => {
+    const target = get().approvals.find((a) => a.id === id);
     set((s) => ({
       approvals: s.approvals.map((a) => a.id === id ? { ...a, status: 'approved' as const, reviewer_note: note || 'Onaylandı', resolved_at: new Date().toISOString() } : a),
     }));
     get().addAuditLog({ action: 'approval.approved', actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı', details: `Onay #${id} kabul edildi` });
+    pushToast({ kind: 'success', title: 'Onaylandı', body: target?.action || `#${id}` });
   },
   rejectItem: (id, note) => {
+    const target = get().approvals.find((a) => a.id === id);
     set((s) => ({
       approvals: s.approvals.map((a) => a.id === id ? { ...a, status: 'rejected' as const, reviewer_note: note, resolved_at: new Date().toISOString() } : a),
     }));
     get().addAuditLog({ action: 'approval.rejected', actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı', details: `Onay #${id} reddedildi: ${note}` });
+    pushToast({ kind: 'info', title: 'Reddedildi', body: target?.action || `#${id}` });
   },
   estimateApprovalImpact: async (id) => {
     const impact = await estimateApprovalImpactApi(id);
@@ -550,6 +631,9 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   chatMessages: seedChatHistory,
   isThinking: false,
   chatProgress: [],
+  taskProgressSnapshots: {},
+  llmDegraded: false,
+  llmDegradedReason: null,
   recentCommands: [],
   commandHistory: [],
   pushCommandHistory: (cmd) => {
@@ -686,6 +770,11 @@ export const useStore = create<AppState>()(persist((set, get) => ({
             agent_id: 'supervisor',
             content: `${result.text}\n\n_(backend offline — tarayıcıdan doğrudan Gemini çağrıldı)_`,
           });
+          pushToast({
+            kind: 'warn',
+            title: 'Backend offline — Gemini fallback aktif',
+            body: 'Hermes/OpenClaw devre dışı; cevap doğrudan Gemini\'den alındı.',
+          });
           return;
         }
         fallbackErrors.push(`Gemini: ${result.error}`);
@@ -696,6 +785,11 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         role: 'assistant',
         agent_id: 'supervisor',
         content: `⚠️ Backend çağrısı başarısız: ${message}.${detail}`,
+      });
+      pushToast({
+        kind: 'error',
+        title: 'Backend çağrısı başarısız',
+        body: `${message}${detail}`,
       });
       get().addAuditLog({
         action: 'backend.error',
@@ -725,18 +819,31 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     set({ isThinking: true, chatProgress: [] });
 
     const pushProgress = (label: string, e: ChatStreamEvent & { kind: 'progress' }) => {
-      set((s) => ({
-        chatProgress: [
-          ...s.chatProgress,
-          {
-            event: e.event,
-            agent_id: (e as Record<string, unknown>).agent_id as string | undefined,
-            tool_id: (e as Record<string, unknown>).tool_id as string | undefined,
-            ts: Date.now(),
-            label,
-          },
-        ].slice(-25),
-      }));
+      const agent_id = (e as Record<string, unknown>).agent_id as string | undefined;
+      const tool_id = (e as Record<string, unknown>).tool_id as string | undefined;
+      const score = (e as Record<string, unknown>).score as number | undefined;
+      const reason = (e as Record<string, unknown>).reason as string | undefined;
+      const confidence = (e as Record<string, unknown>).confidence as number | undefined;
+      const cost_usd = (e as Record<string, unknown>).cost_usd as number | undefined;
+      set((s) => {
+        // Dedup: a server retry / reconnect can resend the same event.
+        // Drop if the most recent entry has the same (event, agent, tool)
+        // tuple within the last 500ms.
+        const last = s.chatProgress[s.chatProgress.length - 1];
+        const isDuplicate =
+          last &&
+          last.event === e.event &&
+          last.agent_id === agent_id &&
+          last.tool_id === tool_id &&
+          Date.now() - last.ts < 500;
+        if (isDuplicate) return {} as Partial<typeof s>;
+        return {
+          chatProgress: [
+            ...s.chatProgress,
+            { event: e.event, agent_id, tool_id, ts: Date.now(), label, score, reason, confidence, cost_usd },
+          ].slice(-25),
+        };
+      });
     };
 
     try {
@@ -802,11 +909,22 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       });
     } catch (err) {
       set({ isThinking: false });
-      const message = err instanceof Error ? err.message : String(err);
+      const raw = err instanceof Error ? err.message : String(err);
+      const isOffline = /Failed to fetch|NetworkError|ECONNREFUSED|TypeError/i.test(raw);
+      const friendly = isOffline
+        ? `Backend çevrimdışı (${BASE_URL}) — demo modu devam ediyor.`
+        : `Canlı akış kesildi: ${raw}`;
       get().addChatMessage({
         role: 'assistant',
         agent_id: 'supervisor',
-        content: `⚠️ Stream başarısız: ${message}. Düz mod ile tekrar deneniyor…`,
+        content: `⚠️ ${friendly} Düz mod ile tekrar deneniyor…`,
+      });
+      pushToast({
+        kind: 'warn',
+        title: isOffline ? 'Backend çevrimdışı' : 'SSE bağlantısı koptu',
+        body: isOffline
+          ? 'Sunucuya ulaşılamıyor — yanıt buffered/Gemini fallback ile sağlanacak.'
+          : `${raw} — buffered path ile devam ediliyor.`,
       });
       // Fall back to the buffered path so the user still gets a reply.
       await get().sendUserMessage(content);
@@ -826,8 +944,12 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       metadata: log.metadata || {},
       timestamp: new Date().toISOString(),
     };
-    set((s) => ({ auditLogs: [newLog, ...s.auditLogs] }));
+    // Retention: keep the most recent 1000 entries to cap in-memory growth.
+    // Anything beyond that is dropped on insert — audit page truncates the
+    // visible window anyway.
+    set((s) => ({ auditLogs: [newLog, ...s.auditLogs].slice(0, 1000) }));
   },
+  clearAuditLogs: () => set({ auditLogs: [] }),
 
   // Integrations
   integrations: seedIntegrations,
@@ -839,6 +961,115 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   onboardedProduct: seedOnboardedProduct,
   setOnboardingStep: (step) => set({ onboardingStep: step }),
   updateOnboardingDraft: (patch) => set((s) => ({ onboardingDraft: { ...s.onboardingDraft, ...patch } })),
+  resetOnboardingDraft: () => set({ onboardingDraft: {}, onboardingStep: 1 }),
+  hydrateFromBackend: async () => {
+    // E2E tests run against a real backend that accumulates products as
+    // each test onboards a new one. Auto-restoring those into the next test
+    // breaks the onboarding-wizard assumption (fresh state). Detect Playwright
+    // via the `webdriver` flag and skip hydration there.
+    if (typeof navigator !== 'undefined' && (navigator as any).webdriver) {
+      return;
+    }
+    try {
+      const productsRes = await fetch(`${BASE_URL}/api/v1/products`, { signal: AbortSignal.timeout(4000) });
+      if (!productsRes.ok) return;
+      const list: any[] = await productsRes.json();
+      if (!Array.isArray(list) || list.length === 0) return;
+      const products: OnboardedProduct[] = list.map((p) => ({
+        product_name: p.product_name,
+        product_description: p.product_description || '',
+        category: p.category || 'Genel',
+        reference_url: p.reference_url || '',
+        image_url: p.image_url || '📦',
+        stage: p.stage || 'idea',
+        target_market: p.target_market || 'TR',
+        channels: p.channels || ['Shopify'],
+        monthly_budget_band: p.monthly_budget_band || '0-5k',
+        priorities: p.priorities || ['fast_sales'],
+        health_score: 42,
+        onboarded_at: p.onboarded_at || new Date().toISOString(),
+      }));
+      const active = list.find((p) => p.is_active) || list[0];
+      const activeProduct = products.find((p) => p.product_name === active.product_name) || products[0];
+      set((s) => ({
+        products,
+        onboardedProduct: activeProduct,
+        // Keep the in-memory dashboard if it's already populated for the same
+        // product (preserves demo-fixture state across hydration races).
+        dashboard: s.dashboard && s.onboardedProduct?.product_name === activeProduct.product_name
+          ? s.dashboard
+          : makeDashboardForProduct(activeProduct),
+        onboardingComplete: true,
+        currentPage: s.currentPage === 'onboarding' ? 'dashboard' : s.currentPage,
+      }));
+      // Pull the latest snapshot for the active product. If the rollup table
+      // has a row, it replaces the in-memory dashboard with the persisted one
+      // (which carries `source` + `measured_at` for the Telemetry layer).
+      try {
+        const snapRes = await fetch(`${BASE_URL}/api/v1/dashboard/snapshot?product=${encodeURIComponent(activeProduct.product_name)}`, {
+          signal: AbortSignal.timeout(4000),
+        });
+        if (snapRes.ok) {
+          const data = await snapRes.json();
+          const snap = data?.snapshot;
+          if (snap) {
+            set({
+              dashboard: {
+                today_sales: snap.today_sales || 0,
+                today_orders: snap.today_orders || 0,
+                today_roas: snap.today_roas || 0,
+                avg_order_value: snap.avg_order_value || 0,
+                conversion_rate: snap.conversion_rate || 0,
+                active_campaigns: 0,
+                pending_approvals: 0,
+                active_tasks: 0,
+                critical_alerts: [],
+                recent_tasks: [],
+                agent_activity: [],
+                sales_trend: snap.sales_trend || [],
+                orders_trend: snap.orders_trend || [],
+                roas_trend: snap.roas_trend || [],
+                channel_performance: snap.channel_performance || [],
+                _isDemo: snap.source === 'demo',
+                _measured_at: snap.measured_at,
+              } as any,
+            });
+          }
+        }
+      } catch {
+        /* no snapshot endpoint or no rows yet */
+      }
+      get().addAuditLog({
+        action: 'app.hydrated',
+        actor_type: 'system', actor_id: 'frontend', actor_name: 'Frontend',
+        details: `${products.length} ürün backend'den yüklendi · aktif: ${activeProduct.product_name}`,
+      });
+    } catch {
+      /* backend offline — keep whatever state we already have */
+    }
+  },
+  startNewProductOnboarding: () => {
+    set({
+      onboardingDraft: {},
+      onboardingStep: 1,
+      currentPage: 'onboarding',
+    });
+    get().addAuditLog({
+      action: 'onboarding.new_product_started',
+      actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı',
+      details: 'Yeni ürün ekleme akışı başlatıldı',
+    });
+  },
+  resetTransientState: () => {
+    set({
+      chatMessages: [],
+      chatProgress: [],
+      auditLogs: [],
+      tasks: [],
+      approvals: [],
+    });
+    pushToast({ kind: 'info', title: 'Sayfa sıfırlandı', body: 'Sohbet, görev, onay ve log geçmişi temizlendi. Ürünler ve marka kimliği korundu.' });
+  },
   completeOnboarding: () => {
     const d = get().onboardingDraft;
     const product: OnboardedProduct = {
@@ -855,24 +1086,38 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       health_score: 42,
       onboarded_at: new Date().toISOString(),
     };
-    set((s) => ({
-      onboardedProduct: product,
-      onboardingComplete: true,
-      currentPage: 'dashboard',
-      dashboard: makeDashboardForProduct(product),
-      brandIdentity: null,
-      brandIdentityError: null,
-      productEconomics: null,
-      productEconomicsError: null,
-      products: s.products.some((p) => p.product_name === product.product_name)
-        ? s.products
-        : [...s.products, product],
-    }));
+    set((s) => {
+      const isNewProduct = !s.products.some((p) => p.product_name === product.product_name);
+      // Preserve existing dashboard demo data when re-running onboarding for the
+      // active product so users don't lose the populated metrics they were
+      // looking at. Only rebuild when a genuinely new product is added.
+      const nextDashboard =
+        !isNewProduct && s.dashboard ? s.dashboard : makeDashboardForProduct(product);
+      return {
+        onboardedProduct: product,
+        onboardingComplete: true,
+        currentPage: 'dashboard',
+        dashboard: nextDashboard,
+        brandIdentity: null,
+        brandIdentityError: null,
+        productEconomics: null,
+        productEconomicsError: null,
+        products: isNewProduct ? [...s.products, product] : s.products,
+      };
+    });
     get().addAuditLog({
       action: 'onboarding.completed',
       actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı',
       details: `Ürün onboard edildi: ${product.product_name}`,
     });
+    // Best-effort persistence — the backend products registry survives reloads
+    // and is the seed for per-product telemetry in Phase 3.
+    fetch(`${BASE_URL}/api/v1/products`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(product),
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => {});
     get().addChatMessage({
       role: 'assistant',
       agent_id: 'supervisor',
@@ -897,6 +1142,9 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       description: onboardMessage,
       priority: 'high',
     });
+    // Kick off brand identity generation in parallel so the Brand page lands
+    // populated instead of showing placeholder gray swatches.
+    void get().regenerateBrandIdentity?.();
   },
   resetOnboarding: () => set({
     onboardingComplete: false,
@@ -931,38 +1179,124 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       '```json',
       '{',
       '  "brand_name": "string (önerilen ana marka adı)",',
-      '  "tagline": "string (kısa slogan)",',
-      '  "story": "string (2-3 cümlelik marka hikayesi)",',
-      '  "positioning": "string (tek cümlelik konumlandırma)",',
+      '  "tagline": "string (en güçlü tek slogan)",',
+      '  "taglines": ["string (4 alternatif slogan, farklı ton/uzunluk)"],',
+      '  "story": "string (3-4 cümlelik marka hikayesi, kuruluş motivasyonu + müşteri vaadi)",',
+      '  "positioning": "string (tek cümlelik X için Y sağlayan Z konumlandırması)",',
+      '  "mission": "string (markanın bugünkü amacı, 1-2 cümle)",',
+      '  "vision": "string (5 yıllık ufuk, 1-2 cümle)",',
+      '  "archetype": "string (Jungian arketip: Kahraman|Bilge|Aşık|Maceracı|Yaratıcı|Hükümdar|Sıradan|Şakacı|Bakıcı|Masum|Asi|Sihirbaz)",',
+      '  "elevator_pitch": "string (30 saniyelik tanıtım, 2-3 cümle)",',
+      '  "usp": "string (rakiplerden ayıran tek cümlelik vaat)",',
+      '  "values": [{"name":"string","description":"string (değerin davranışsal karşılığı)"}],',
+      '  "differentiators": ["string (rakiplerden ayrışan somut özellikler)"],',
+      '  "tone_examples": [{"context":"ürün açıklaması|sosyal medya post|e-posta açılış|destek mesajı|reklam başlığı","example":"string (markanın ağzından örnek cümle)"}],',
+      '  "hashtags": ["#string"],',
+      '  "keywords": ["string (SEO + reklam için anahtar kelimeler)"],',
+      '  "typography": {"heading":"font ailesi","body":"font ailesi","rationale":"neden bu eşleşme"},',
+      '  "logo_concepts": [{"name":"string","description":"string (sembol + tipografi yönü)"}],',
+      '  "imagery_style": {"mood":"string","do":["string"],"dont":["string"],"references":["string (sahne/kompozisyon örnekleri)"]},',
+      '  "competitors": [{"name":"string","positioning":"string","gap":"string (bu markanın doldurduğu boşluk)"}],',
       '  "alternatives": [{"name":"string","score":0,"domain":"string ✓ veya ✗","reasoning":"string"}],',
-      '  "palette": [{"role":"Primary|Secondary|Accent","hex":"#RRGGBB","label":"string"}],',
+      '  "palette": [{"role":"Primary|Secondary|Accent|Neutral|Background","hex":"#RRGGBB","label":"string (renge verilen isim)"}],',
       '  "voice": {"traits":["string"],"do":["string"],"dont":["string"]},',
       '  "personas": [{"name":"string","age":"string","goal":"string","objection":"string","channel":"string","emoji":"string"}],',
-      '  "social_handles": [{"platform":"Instagram|TikTok|YouTube|Twitter","handle":"@string","available":true}]',
+      '  "social_handles": [{"platform":"Instagram|TikTok|YouTube|Twitter|LinkedIn","handle":"@string","available":true}]',
       '}',
       '```',
-      'alternatives en az 4, palette en az 5, personas en az 3, social_handles en az 4 öğe içersin.',
+      'Minimum sayılar: taglines ≥ 4, values ≥ 4, differentiators ≥ 4, tone_examples ≥ 5, hashtags ≥ 6, keywords ≥ 8, logo_concepts ≥ 3, competitors ≥ 3, alternatives ≥ 4, palette ≥ 5 (Primary + Secondary + Accent + 2 Neutral), voice.traits ≥ 5, voice.do ≥ 4, voice.dont ≥ 4, personas ≥ 3, social_handles ≥ 4. Her metin alanı somut, ürün/kategoriye özgü olsun — jenerik pazarlama klişesi yazma.',
     ].join('\n');
 
     try {
-      const { response: res, fallback_used } = await chatWithFallback(
-        {
-          message: prompt,
+      // Brand identity expects strict JSON. Phase-4 priority: try the
+      // server-side `/api/v1/brand/regenerate-identity` endpoint FIRST so the
+      // browser doesn't need `VITE_GEMINI_API_KEY`. Direct Gemini call stays
+      // as a last-resort fallback when the backend is unreachable AND the
+      // browser still has a key configured (legacy local dev).
+      const sources: string[] = [];
+      try {
+        const serverRes = await fetch(`${BASE_URL}/api/v1/brand/regenerate-identity`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            product: {
+              product_name: product.product_name,
+              product_description: product.product_description || '',
+              category: product.category,
+              stage: product.stage,
+              target_market: product.target_market,
+              channels: product.channels,
+              monthly_budget_band: product.monthly_budget_band,
+              priorities: product.priorities,
+            },
+          }),
+          signal: AbortSignal.timeout(60000),
+        });
+        if (serverRes.ok) {
+          const data = await serverRes.json();
+          if (data?.identity) {
+            sources.push(JSON.stringify(data.identity));
+          }
+        } else {
+          const body = await serverRes.text();
+          get().addAuditLog({
+            action: 'brand_identity.server_failed',
+            actor_type: 'system', actor_id: 'backend', actor_name: 'Backend',
+            details: `HTTP ${serverRes.status}: ${body.slice(0, 200)}`,
+          });
+        }
+      } catch (err: any) {
+        get().addAuditLog({
+          action: 'brand_identity.server_unreachable',
+          actor_type: 'system', actor_id: 'backend', actor_name: 'Backend',
+          details: err?.message || String(err),
+        });
+      }
+      // Legacy fallback — only used if backend didn't deliver AND a browser
+      // key is still configured. New deployments should not need this path.
+      if (sources.length === 0 && isGeminiConfigured()) {
+        const direct = await callGemini({
+          system: 'Sen Brand Identity Agent\'sın. Yalnızca geçerli JSON üret, başka metin/yorum yazma.',
           history: [],
-          product_context: {
-            product_name: product.product_name,
-            category: product.category,
-            stage: product.stage,
-            target_market: product.target_market,
-            channels: product.channels,
-            monthly_budget_band: product.monthly_budget_band,
-            priorities: product.priorities,
+          user: prompt,
+          json: true,
+          maxOutputTokens: 8192,
+        });
+        if (direct.text) sources.push(direct.text);
+        if (direct.error) {
+          get().addAuditLog({
+            action: 'brand_identity.gemini_direct_failed',
+            actor_type: 'system', actor_id: 'frontend', actor_name: 'Frontend',
+            details: direct.error,
+          });
+        }
+      }
+      // Fallback to the Hermes pipeline if direct call had nothing usable.
+      let res: any = { content: '', agent_outputs: [] };
+      let fallback_used = false;
+      if (sources.length === 0) {
+        const out = await chatWithFallback(
+          {
+            message: prompt,
+            history: [],
+            product_context: {
+              product_name: product.product_name,
+              category: product.category,
+              stage: product.stage,
+              target_market: product.target_market,
+              channels: product.channels,
+              monthly_budget_band: product.monthly_budget_band,
+              priorities: product.priorities,
+            },
           },
-        },
-        isGeminiConfigured()
-          ? async (system, user) => callGemini({ system, history: [], user })
-          : undefined,
-      );
+          isGeminiConfigured()
+            ? async (system, user) => callGemini({ system, history: [], user, json: true, maxOutputTokens: 8192 })
+            : undefined,
+        );
+        res = out.response;
+        fallback_used = out.fallback_used;
+        sources.push(res.content, ...res.agent_outputs.map((a: any) => a.content || a.summary));
+      }
       if (fallback_used) {
         set({ fallbackActive: true, backendStatus: 'offline' });
         get().addAuditLog({
@@ -972,8 +1306,6 @@ export const useStore = create<AppState>()(persist((set, get) => ({
           metadata: { fallback_used: true },
         });
       }
-      // Backend may merge multiple agent outputs into res.content; search both.
-      const sources = [res.content, ...res.agent_outputs.map((a) => a.content || a.summary)];
       let parsed: BrandIdentity | null = null;
       for (const src of sources) {
         const obj = extractJson<Partial<BrandIdentity>>(src || '');
@@ -983,6 +1315,21 @@ export const useStore = create<AppState>()(persist((set, get) => ({
             tagline: obj.tagline || '',
             story: obj.story || '',
             positioning: obj.positioning || '',
+            mission: obj.mission || '',
+            vision: obj.vision || '',
+            archetype: obj.archetype || '',
+            elevator_pitch: obj.elevator_pitch || '',
+            usp: obj.usp || '',
+            values: Array.isArray(obj.values) ? obj.values : [],
+            differentiators: Array.isArray(obj.differentiators) ? obj.differentiators : [],
+            taglines: Array.isArray(obj.taglines) ? obj.taglines : [],
+            tone_examples: Array.isArray(obj.tone_examples) ? obj.tone_examples : [],
+            hashtags: Array.isArray(obj.hashtags) ? obj.hashtags : [],
+            keywords: Array.isArray(obj.keywords) ? obj.keywords : [],
+            typography: obj.typography || undefined,
+            logo_concepts: Array.isArray(obj.logo_concepts) ? obj.logo_concepts : [],
+            imagery_style: obj.imagery_style || undefined,
+            competitors: Array.isArray(obj.competitors) ? obj.competitors : [],
             alternatives: Array.isArray(obj.alternatives) ? obj.alternatives : [],
             palette: Array.isArray(obj.palette) ? obj.palette : [],
             voice: obj.voice || { traits: [], do: [], dont: [] },
@@ -994,11 +1341,11 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         }
       }
       if (!parsed) {
-        // Surface the real backend/agent error if present (e.g. Gemini 400, API key).
-        const failedAgents = res.agent_outputs.filter((a) => a.status === 'failed');
+        const failedAgents = res.agent_outputs.filter((a: any) => a.status === 'failed');
         const errorSnippet = failedAgents[0]?.content || failedAgents[0]?.summary || '';
+        const rawSnippet = (sources.find(s => s && s.length > 0) || '').slice(0, 240);
         let userMessage: string;
-        if (/api key/i.test(errorSnippet) || /API key not valid/i.test(res.content)) {
+        if (/api key/i.test(errorSnippet) || /API key not valid/i.test(res.content || '')) {
           userMessage =
             'Backend Gemini API anahtarını geçersiz görüyor. ' +
             'Backend\'i durdurup PowerShell\'de `Remove-Item Env:GEMINI_API_KEY` çalıştırdıktan sonra ' +
@@ -1006,6 +1353,8 @@ export const useStore = create<AppState>()(persist((set, get) => ({
             'eski sistem env anahtarı kullanılıyor.';
         } else if (errorSnippet) {
           userMessage = `Ajan başarısız oldu: ${errorSnippet.slice(0, 240)}`;
+        } else if (rawSnippet) {
+          userMessage = `JSON parse edilemedi. Ham yanıt: "${rawSnippet}". "Yeniden Üret" tekrar denenebilir.`;
         } else {
           userMessage = 'Ajan JSON döndürmedi. "Yeniden Üret" tekrar denenebilir.';
         }
@@ -1016,7 +1365,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         get().addAuditLog({
           action: 'brand_identity.parse_failed',
           actor_type: 'system', actor_id: 'frontend', actor_name: 'Frontend',
-          details: `JSON parse edilemedi — content uzunluğu ${res.content?.length ?? 0}`,
+          details: `JSON parse edilemedi — kaynak sayısı ${sources.length}, ilk içerik uzunluğu ${sources[0]?.length ?? 0}`,
         });
         return;
       }
@@ -1034,6 +1383,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         actor_type: 'system', actor_id: 'backend', actor_name: 'Backend',
         details: message,
       });
+      pushToast({ kind: 'error', title: 'Marka kimliği üretilemedi', body: message });
     }
   },
 
@@ -1041,6 +1391,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   productEconomics: null,
   productEconomicsLoading: false,
   productEconomicsError: null,
+  setProductEconomics: (econ) => set({ productEconomics: econ }),
   regenerateProductEconomics: async () => {
     const state = get();
     const product = state.onboardedProduct;
@@ -1139,6 +1490,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       set({ productEconomicsLoading: false, productEconomicsError: message });
+      pushToast({ kind: 'error', title: 'Ürün ekonomisi üretilemedi', body: message });
     }
   },
 
@@ -1169,23 +1521,108 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     get().addAuditLog({ action: 'flow.published', actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı', details: `${flow?.name} yayına alındı` });
   },
 
-  syncIntegration: (id) => {
-    set((s) => ({ integrations: s.integrations.map((i) => i.id === id ? { ...i, status: 'connected' as const, last_sync: new Date().toISOString() } : i) }));
-    const int = get().integrations.find((i) => i.id === id);
-    get().addAuditLog({ action: 'integration.synced', actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı', details: `${int?.platform} senkronize edildi` });
+  fetchIntegrations: async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/integrations`, {
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!res.ok) return;
+      const items = await res.json();
+      if (!Array.isArray(items)) return;
+      // Map backend → frontend Integration shape (icon, id, platform, status,
+      // store_name, last_sync are 1:1; we surface `mode` + `notes` too).
+      const normalized = items.map((i: any) => ({
+        id: i.id,
+        platform: i.platform,
+        icon: i.icon,
+        store_name: i.store_name || '',
+        status: i.status as 'connected' | 'disconnected' | 'error',
+        last_sync: i.last_sync,
+        mode: i.mode,
+        notes: i.notes,
+      }));
+      set({ integrations: normalized as any });
+    } catch {
+      // Backend offline — leave whatever seed integrations are in place.
+    }
   },
-  connectIntegration: (platform, icon) => {
-    if (get().integrations.some((i) => i.platform === platform)) return;
-    const newInt: Integration = {
-      id: `int_${uuidv4().slice(0, 8)}`,
-      platform,
-      store_name: `${platform} Store`,
-      status: 'connected',
-      last_sync: new Date().toISOString(),
-      icon,
-    };
-    set((s) => ({ integrations: [...s.integrations, newInt] }));
-    get().addAuditLog({ action: 'integration.connected', actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı', details: `${platform} bağlandı` });
+
+  syncIntegration: async (id) => {
+    const int = get().integrations.find((i) => i.id === id);
+    if (!int) return;
+    // Try the real backend sync endpoint. On failure we mark the integration
+    // as `error` instead of silently flipping it to `connected` like the old
+    // optimistic stub did.
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/integrations/${id}/sync`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      set((s) => ({
+        integrations: s.integrations.map((i) =>
+          i.id === id ? { ...i, status: 'connected' as const, last_sync: new Date().toISOString() } : i,
+        ),
+      }));
+      get().addAuditLog({ action: 'integration.synced', actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı', details: `${int.platform} senkronize edildi (backend)` });
+      pushToast({ kind: 'success', title: 'Senkron tamam', body: `${int.platform} güncel.` });
+    } catch (err: any) {
+      set((s) => ({
+        integrations: s.integrations.map((i) =>
+          i.id === id ? { ...i, status: 'error' as const, last_sync: i.last_sync } : i,
+        ),
+      }));
+      get().addAuditLog({ action: 'integration.sync_failed', actor_type: 'system', actor_id: 'backend', actor_name: 'Backend', details: `${int.platform}: ${err?.message || err}` });
+      pushToast({ kind: 'warn', title: 'Senkron başarısız', body: `${int.platform}: ${err?.message || err}` });
+    }
+  },
+  connectIntegration: async (platform, icon) => {
+    if (get().integrations.some((i) => i.platform === platform)) {
+      pushToast({ kind: 'info', title: 'Zaten ekli', body: `${platform} bağlı kanallar listesinde.` });
+      return;
+    }
+    // Hit the backend connect endpoint. A real implementation returns an OAuth
+    // URL (or marks the integration as `disconnected/pending_auth`). When the
+    // endpoint is missing we record a clearly-labeled local stub instead of
+    // pretending the connection succeeded.
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/integrations/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data?.auth_url) {
+        window.open(data.auth_url, '_blank', 'noopener');
+        pushToast({ kind: 'info', title: 'OAuth penceresi açıldı', body: `${platform} bağlantısını tamamlamak için yeni sekmeyi takip et.` });
+      }
+      const newInt: Integration = {
+        id: data?.id || `int_${uuidv4().slice(0, 8)}`,
+        platform,
+        store_name: data?.store_name || `${platform}`,
+        status: (data?.status as any) || 'disconnected',
+        last_sync: data?.last_sync || null,
+        icon,
+      };
+      set((s) => ({ integrations: [...s.integrations, newInt] }));
+      get().addAuditLog({ action: 'integration.connect_requested', actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı', details: `${platform} bağlantısı talep edildi (status=${newInt.status})` });
+    } catch (err: any) {
+      // Local-only stub: mark the integration as `disconnected` so the UI
+      // shows the pending state honestly instead of a fake "Bağlı" badge.
+      const newInt: Integration = {
+        id: `int_local_${uuidv4().slice(0, 8)}`,
+        platform,
+        store_name: `${platform} (yerel taslak)`,
+        status: 'disconnected',
+        last_sync: null,
+        icon,
+      };
+      set((s) => ({ integrations: [...s.integrations, newInt] }));
+      get().addAuditLog({ action: 'integration.connect_stub', actor_type: 'system', actor_id: 'frontend', actor_name: 'Frontend', details: `${platform} backend yok — yerel taslak eklendi (${err?.message || err})` });
+      pushToast({ kind: 'warn', title: 'Backend bağlantı endpoint\'i yok', body: `${platform} yerel taslak olarak eklendi — gerçek bağlantı için OAuth yapılandırılmalı.` });
+    }
   },
 
   quickAsk: (content) => {
@@ -1353,12 +1790,22 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   switchToProduct: (productName) => {
     const target = get().products.find((p) => p.product_name === productName);
     if (!target) return;
+    // Drop selection so the detail page doesn't keep rendering the previous
+    // product's task (#18). Tasks themselves are kept in history; only the
+    // currently-selected pointer is cleared.
     set({
       onboardedProduct: target,
       dashboard: makeDashboardForProduct(target),
       brandIdentity: null,
       productEconomics: null,
+      selectedTaskId: null,
     });
+    // Tell the backend which product is now active. Best-effort — if the
+    // endpoint or product isn't there yet we still keep local state.
+    fetch(`${BASE_URL}/api/v1/products/${encodeURIComponent(productName)}/activate`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => {});
     get().addAuditLog({
       action: 'product.switched',
       actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı',
@@ -1372,6 +1819,45 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         : [...s.products, product],
     }));
   },
+  removeProduct: async (productName) => {
+    const state = get();
+    const remaining = state.products.filter((p) => p.product_name !== productName);
+    const wasActive = state.onboardedProduct?.product_name === productName;
+    const nextActive = wasActive ? (remaining[0] || null) : state.onboardedProduct;
+    set({
+      products: remaining,
+      onboardedProduct: nextActive,
+      dashboard: nextActive ? makeDashboardForProduct(nextActive) : null,
+      brandIdentity: wasActive ? null : state.brandIdentity,
+      productEconomics: wasActive ? null : state.productEconomics,
+    });
+    state.addAuditLog({
+      action: 'product.removed',
+      actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı',
+      details: `Ürün silindi: ${productName}`,
+    });
+    pushToast({
+      kind: 'success',
+      title: 'Ürün silindi',
+      body: nextActive
+        ? `${productName} kaldırıldı · aktif: ${nextActive.product_name}`
+        : `${productName} kaldırıldı · workspace boş`,
+    });
+    try {
+      await fetch(`${BASE_URL}/api/v1/products/${encodeURIComponent(productName)}`, {
+        method: 'DELETE',
+        signal: AbortSignal.timeout(4000),
+      });
+      if (wasActive && nextActive) {
+        await fetch(`${BASE_URL}/api/v1/products/${encodeURIComponent(nextActive.product_name)}/activate`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(3000),
+        });
+      }
+    } catch {
+      // Backend may be offline — local state is already updated.
+    }
+  },
 
   // ─── Demo fixtures ─────────────────────────────────────────────────────────
   // Loads believable mock numbers into Dashboard, Analytics and Approvals so
@@ -1380,37 +1866,39 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     const product = get().onboardedProduct;
     if (!product) return;
     const today = new Date();
-    const dateLabel = (offset: number) =>
-      new Date(today.getTime() - offset * 86400000).toLocaleDateString('tr-TR', {
-        day: '2-digit', month: 'short',
-      });
-    const trend = [4200, 5100, 4800, 6300, 7100, 5800, 8200];
-    const channels = product.channels.length ? product.channels : ['Shopify'];
+    // Use the same deterministic dashboard generator that runs after onboarding
+    // — guarantees today_sales / sales_trend / channel_performance all line up.
+    const base = makeDemoDashboardForProduct(product);
     set({
       dashboard: {
-        today_sales: 8200,
-        today_orders: 47,
-        today_roas: 3.4,
-        avg_order_value: 174,
-        conversion_rate: 0.028,
-        active_campaigns: 4,
-        pending_approvals: 3,
-        active_tasks: 5,
+        ...base,
         critical_alerts: [
           { id: 'alrt_demo_1', type: 'stock', severity: 'warning', title: 'Düşük stok uyarısı', description: `${product.product_name} ana SKU stok < 14 gün`, agent_id: 'inventory_forecast_agent', created_at: today.toISOString() },
           { id: 'alrt_demo_2', type: 'performance', severity: 'info', title: 'ROAS artışı', description: 'Meta Ads kampanyası dün +18% ROAS', agent_id: 'paid_media_agent', created_at: today.toISOString() },
         ],
-        recent_tasks: [],
-        agent_activity: [],
-        sales_trend: trend.map((v, i) => ({ date: dateLabel(6 - i), value: v })),
-        channel_performance: channels.map((channel, i) => ({
-          channel,
-          sales: [12500, 8400, 6200, 3100][i] ?? 1800,
-          orders: [72, 51, 38, 19][i] ?? 11,
-        })),
         _isDemo: true,
       },
     });
+    // Persist the demo snapshot so a page reload (Phase-3 hydration) restores
+    // these numbers instead of re-deriving them from scratch.
+    fetch(`${BASE_URL}/api/v1/dashboard/snapshot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product: product.product_name,
+        today_sales: base.today_sales,
+        today_orders: base.today_orders,
+        today_roas: base.today_roas,
+        conversion_rate: base.conversion_rate,
+        avg_order_value: base.avg_order_value,
+        sales_trend: base.sales_trend,
+        orders_trend: base.orders_trend,
+        roas_trend: base.roas_trend,
+        channel_performance: base.channel_performance,
+        source: 'demo',
+      }),
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => {});
     // Demo approvals so the approvals page has something to review.
     const demoApprovals: Approval[] = [
       {
@@ -1489,6 +1977,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     onboardingStep: s.onboardingStep,
     onboardingComplete: s.onboardingComplete,
     onboardedProduct: s.onboardedProduct,
+    onboardingDraft: s.onboardingDraft,
   }),
   version: 1,
 }));
@@ -1524,17 +2013,33 @@ _persistImpl = ({ title, description, priority, startedAt, response }: PersistAr
     expected_impact: r.expected_impact,
   }));
 
+  // Carry the active product into the task's goal/constraints so the detail
+  // view doesn't show empty "Hedef" / "Kısıt tanımlanmamış" right after the
+  // onboarding finishes (#23).
+  const activeProduct = useStore.getState().onboardedProduct;
+  const productGoal = activeProduct
+    ? `${activeProduct.product_name} (${activeProduct.category}, ${activeProduct.stage}) için: ${description || title}`
+    : description || title;
+  const productConstraints: string[] = activeProduct
+    ? [
+        `Hedef pazar: ${activeProduct.target_market}`,
+        `Kanallar: ${(activeProduct.channels || []).join(', ') || '—'}`,
+        `Bütçe: ${activeProduct.monthly_budget_band || '—'}`,
+        `Öncelikler: ${(activeProduct.priorities || []).join(', ') || '—'}`,
+      ]
+    : [];
+
   const newTask: Task = {
     task_id: taskId,
     parent_task_id: null,
     title,
     description,
-    goal: '',
+    goal: productGoal,
     status: (primary?.status === 'failed' ? 'failed' : 'completed') as Task['status'],
     priority,
     assigned_agent_id: primary?.agent_id ?? null,
-    context: {},
-    constraints: [],
+    context: activeProduct ? { product_name: activeProduct.product_name } : {},
+    constraints: productConstraints,
     required_capabilities: [],
     output_schema: {},
     max_iterations: 5,
@@ -1591,9 +2096,19 @@ _persistImpl = ({ title, description, priority, startedAt, response }: PersistAr
       resolved_at: null,
     }));
 
+  // Freeze the SSE progress trace under this task id so the Graph page can
+  // replay the DAG later — chatProgress itself will be cleared by the next
+  // user prompt.
+  const progressSnapshot = useStore.getState().chatProgress;
+
   useStore.setState((s) => ({
     tasks: [newTask, ...s.tasks],
     approvals: [...newApprovals, ...s.approvals],
+    taskProgressSnapshots: progressSnapshot && progressSnapshot.length
+      ? { ...s.taskProgressSnapshots, [taskId]: progressSnapshot }
+      : s.taskProgressSnapshots,
+    llmDegraded: !!(response as any).llm_degraded,
+    llmDegradedReason: (response as any).llm_degraded_reason ?? null,
   }));
 
   const audit = useStore.getState().addAuditLog;

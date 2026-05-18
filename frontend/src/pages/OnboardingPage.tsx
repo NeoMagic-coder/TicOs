@@ -1,268 +1,439 @@
+import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '@/stores/useStore';
-import type { OnboardingStage } from '@/types';
-import { Sparkles, ArrowRight, ArrowLeft, Check } from 'lucide-react';
+import type { OnboardedProduct } from '@/types';
+import {
+  FLEET, PHASES,
+  type FleetActivator, type FleetGroup,
+} from '@/components/onboarding/data';
+import {
+  Phase1Product, Phase2Market, Phase3Directives, Phase4Initialize,
+} from '@/components/onboarding/phases';
+import {
+  IcArrowLeft, IcArrowRight, IcCheck, IcDot, IcSpark,
+} from '@/components/onboarding/icons';
+import { ONBOARDING_CSS } from '@/components/onboarding/styles';
 
-const stageOptions: { value: OnboardingStage; label: string; hint: string; icon: string }[] = [
-  { value: 'idea',             label: 'Sıfırdan, fikir aşamasındayım',         hint: 'Ürün henüz yok. Araştırmadan başla.',      icon: '💡' },
-  { value: 'product_no_store', label: 'Ürünüm var, mağaza yok',                hint: 'Marka + Shopify/pazaryeri kurulumu.',      icon: '📦' },
-  { value: 'store_growing',    label: 'Mağazam var, büyümek istiyorum',        hint: 'Reklam, CRO, email, yeni kanal.',          icon: '🚀' },
-  { value: 'marketplace_opt',  label: 'Pazaryerindeyim, optimize etmek istiyorum', hint: 'Listing, fiyat, yorum.',              icon: '🎯' },
-];
+type Draft = Partial<OnboardedProduct>;
 
-const channelOptions = ['Shopify', 'WooCommerce', 'Trendyol', 'Hepsiburada', 'Amazon TR', 'Amazon Global', 'Etsy', 'TikTok Shop', 'Sahibinden', 'Dolap'];
-const priorityOptions = [
-  { id: 'fast_sales',     label: 'Hızlı satış başlatmak' },
-  { id: 'brand_building', label: 'Marka kurmak' },
-  { id: 'cost_reduction', label: 'Maliyeti düşürmek' },
-  { id: 'scaling',        label: 'Ölçeklenmek' },
-];
+/* Inject design-system fonts + CSS once. */
+const FONTS_HREF = 'https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap';
+const STYLE_ID = 'onboarding-boot-styles';
+const FONT_ID = 'onboarding-boot-fonts';
 
-export function OnboardingPage() {
-  const step = useStore((s) => s.onboardingStep);
-  const draft = useStore((s) => s.onboardingDraft);
-  const setOnboardingStep = useStore((s) => s.setOnboardingStep);
-  const updateOnboardingDraft = useStore((s) => s.updateOnboardingDraft);
-  const completeOnboarding = useStore((s) => s.completeOnboarding);
-
-  const canAdvance = (() => {
-    if (step === 1) return !!(draft.product_name && draft.category);
-    if (step === 2) return !!draft.stage;
-    if (step === 3) return !!draft.target_market && !!draft.monthly_budget_band && (draft.channels?.length ?? 0) > 0;
-    if (step === 4) return (draft.priorities?.length ?? 0) > 0;
-    return true;
-  })();
-
-  /** Human-readable list of fields still missing for the current step.
-   *  Surfaced as inline error text below the form so the user understands
-   *  why the "Devam" button is greyed out (instead of just disabled). */
-  const missingFields = (() => {
-    if (canAdvance) return [];
-    if (step === 1) {
-      const missing: string[] = [];
-      if (!draft.product_name) missing.push('Ürün adı');
-      if (!draft.category) missing.push('Kategori');
-      return missing;
+function useOnboardingAssets() {
+  useEffect(() => {
+    if (!document.getElementById(FONT_ID)) {
+      const link = document.createElement('link');
+      link.id = FONT_ID;
+      link.rel = 'stylesheet';
+      link.href = FONTS_HREF;
+      document.head.appendChild(link);
     }
-    if (step === 2) return draft.stage ? [] : ['Başlangıç aşaması'];
-    if (step === 3) {
-      const missing: string[] = [];
-      if (!draft.target_market) missing.push('Hedef pazar');
-      if ((draft.channels?.length ?? 0) === 0) missing.push('En az bir kanal');
-      if (!draft.monthly_budget_band) missing.push('Aylık bütçe');
-      return missing;
+    if (!document.getElementById(STYLE_ID)) {
+      const style = document.createElement('style');
+      style.id = STYLE_ID;
+      style.textContent = ONBOARDING_CSS;
+      document.head.appendChild(style);
     }
-    if (step === 4) return (draft.priorities?.length ?? 0) === 0 ? ['En az bir öncelik'] : [];
-    return [];
-  })();
+  }, []);
+}
+
+/* ─── menubar ───────────────────────────────────────────────────── */
+function TopMenubar({ phase, fleetArmed }: { phase: number; fleetArmed: number }) {
+  const [time, setTime] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const hh = String(time.getHours()).padStart(2, '0');
+  const mm = String(time.getMinutes()).padStart(2, '0');
+  const ss = String(time.getSeconds()).padStart(2, '0');
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-[#1a1816] via-[#1a1816] to-[#241c14] text-gray-100 px-6 py-10 flex justify-center">
-      <div className="w-full max-w-3xl">
-        <div className="flex items-center gap-3 mb-2">
-          <span className="text-yellow-500 text-3xl">⚡</span>
-          <div>
-            <h1 className="text-2xl font-bold">OneProduct Agent OS</h1>
-            <p className="text-sm text-gray-400">Bir ürün. Tüm e-ticaret. Tamamen otonom.</p>
-          </div>
+    <div className="ob-menubar">
+      <div className="ob-menubar__brand">
+        <span className="ob-menubar__mark" />
+        ONEPRODUCT
+        <span className="ob-menubar__sep" />
+        <span className="ob-menubar__path">os // onboarding.boot</span>
+      </div>
+      <div className="ob-menubar__spacer" />
+      <div className="ob-menubar__items">
+        <div className="ob-menubar__item">
+          <span className="ob-menubar__lbl">PHASE</span>
+          <span className="ob-menubar__val">{String(phase).padStart(2, '0')}/04</span>
         </div>
-
-        <div className="flex items-center gap-2 mt-8 mb-8">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <div key={n} className="flex-1 flex items-center gap-2">
-              <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
-                n < step ? 'bg-yellow-500 border-yellow-500 text-black' :
-                n === step ? 'bg-yellow-500/20 border-yellow-500 text-yellow-300' :
-                'bg-transparent border-[#3a3633] text-gray-600'
-              }`}>
-                {n < step ? <Check size={14} /> : n}
-              </div>
-              {n < 5 && <div className={`h-0.5 flex-1 ${n < step ? 'bg-yellow-500' : 'bg-[#3a3633]'}`} />}
-            </div>
-          ))}
+        <div className="ob-menubar__item">
+          <span className="ob-menubar__lbl">FLEET</span>
+          <span className="ob-menubar__val">{fleetArmed}/22</span>
         </div>
-
-        <div className="bg-[#262422] border border-[#3a3633] rounded-2xl p-8 min-h-[400px]">
-          {step === 1 && (
-            <div>
-              <h2 className="text-xl font-bold mb-1">Ürününüz ne?</h2>
-              <p className="text-sm text-gray-500 mb-6">Tüm ajanlar bu profile göre çalışacak.</p>
-              <Field label="Ürün adı / tanımı *">
-                <input required aria-required="true" value={draft.product_name ?? ''} onChange={(e) => updateOnboardingDraft({ product_name: e.target.value })} placeholder="örn. Granit Yanmaz Tencere Seti" className="w-full bg-[#1a1816] border border-[#3a3633] rounded-lg px-3 py-2.5 text-sm focus:border-yellow-500 outline-none" />
-              </Field>
-              <Field label="Kısa açıklama">
-                <textarea value={draft.product_description ?? ''} onChange={(e) => updateOnboardingDraft({ product_description: e.target.value })} rows={3} placeholder="Özellikler, hedef kitle, farklılaştırıcı..." className="w-full bg-[#1a1816] border border-[#3a3633] rounded-lg px-3 py-2.5 text-sm focus:border-yellow-500 outline-none resize-none" />
-              </Field>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Kategori *">
-                  <input required aria-required="true" value={draft.category ?? ''} onChange={(e) => updateOnboardingDraft({ category: e.target.value })} placeholder="örn. Ev & Mutfak" className="w-full bg-[#1a1816] border border-[#3a3633] rounded-lg px-3 py-2.5 text-sm focus:border-yellow-500 outline-none" />
-                </Field>
-                <Field label="Referans URL (opsiyonel)">
-                  <input value={draft.reference_url ?? ''} onChange={(e) => updateOnboardingDraft({ reference_url: e.target.value })} placeholder="https://..." className="w-full bg-[#1a1816] border border-[#3a3633] rounded-lg px-3 py-2.5 text-sm focus:border-yellow-500 outline-none" />
-                </Field>
-              </div>
-              <Field label="Emoji / ikon">
-                <input value={draft.image_url ?? ''} onChange={(e) => updateOnboardingDraft({ image_url: e.target.value })} placeholder="📦" className="w-24 bg-[#1a1816] border border-[#3a3633] rounded-lg px-3 py-2.5 text-2xl text-center focus:border-yellow-500 outline-none" />
-              </Field>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div>
-              <h2 className="text-xl font-bold mb-1">Nereden başlamak istiyorsunuz?</h2>
-              <p className="text-sm text-gray-500 mb-6">CEO Agent yol haritasını buna göre kuracak.</p>
-              <div className="space-y-2">
-                {stageOptions.map((opt) => (
-                  <button key={opt.value} onClick={() => updateOnboardingDraft({ stage: opt.value })}
-                    className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl border text-left transition-all ${
-                      draft.stage === opt.value
-                        ? 'border-yellow-500 bg-yellow-500/10'
-                        : 'border-[#3a3633] bg-[#1a1816] hover:border-[#4a4643]'
-                    }`}>
-                    <span className="text-3xl shrink-0">{opt.icon}</span>
-                    <div className="flex-1">
-                      <div className="font-semibold text-sm">{opt.label}</div>
-                      <div className="text-xs text-gray-500 mt-0.5">{opt.hint}</div>
-                    </div>
-                    {draft.stage === opt.value && <Check size={18} className="text-yellow-500" />}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div>
-              <h2 className="text-xl font-bold mb-1">Hedef pazarınız ve bütçeniz?</h2>
-              <p className="text-sm text-gray-500 mb-6">Kanal ve reklam stratejisi şekillenecek.</p>
-              <Field label="Hedef pazar *">
-                <div className="grid grid-cols-3 gap-2">
-                  {(['TR', 'GLOBAL', 'BOTH'] as const).map((m) => (
-                    <button key={m} onClick={() => updateOnboardingDraft({ target_market: m })}
-                      className={`py-2.5 rounded-lg border text-sm font-semibold ${draft.target_market === m ? 'border-yellow-500 bg-yellow-500/10 text-yellow-300' : 'border-[#3a3633] bg-[#1a1816] text-gray-400'}`}>
-                      {m === 'TR' ? '🇹🇷 Türkiye' : m === 'GLOBAL' ? '🌍 Global' : '🌐 İkisi de'}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-              <Field label="Kanal tercihi * (en az 1)">
-                <div className="flex flex-wrap gap-2">
-                  {channelOptions.map((c) => {
-                    const selected = draft.channels?.includes(c);
-                    return (
-                      <button key={c} onClick={() => {
-                        const arr = draft.channels ?? [];
-                        updateOnboardingDraft({ channels: selected ? arr.filter((x) => x !== c) : [...arr, c] });
-                      }}
-                        className={`px-3 py-1.5 rounded-full border text-xs font-medium ${selected ? 'border-yellow-500 bg-yellow-500/15 text-yellow-300' : 'border-[#3a3633] bg-[#1a1816] text-gray-400'}`}>
-                        {c}
-                      </button>
-                    );
-                  })}
-                </div>
-              </Field>
-              <Field label="Aylık reklam bütçesi *">
-                <div className="grid grid-cols-4 gap-2">
-                  {(['0-5k', '5k-25k', '25k-100k', '100k+'] as const).map((b) => (
-                    <button key={b} onClick={() => updateOnboardingDraft({ monthly_budget_band: b })}
-                      className={`py-2.5 rounded-lg border text-xs font-semibold ${draft.monthly_budget_band === b ? 'border-yellow-500 bg-yellow-500/10 text-yellow-300' : 'border-[#3a3633] bg-[#1a1816] text-gray-400'}`}>
-                      ₺{b}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            </div>
-          )}
-
-          {step === 4 && (
-            <div>
-              <h2 className="text-xl font-bold mb-1">Öncelikleriniz?</h2>
-              <p className="text-sm text-gray-500 mb-6">Ajanlar görev önceliğini buna göre belirler.</p>
-              <div className="space-y-2">
-                {priorityOptions.map((p) => {
-                  const selected = draft.priorities?.includes(p.id);
-                  return (
-                    <button key={p.id} onClick={() => {
-                      const arr = draft.priorities ?? [];
-                      updateOnboardingDraft({ priorities: selected ? arr.filter((x) => x !== p.id) : [...arr, p.id] });
-                    }}
-                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border text-sm font-semibold ${selected ? 'border-yellow-500 bg-yellow-500/10 text-yellow-300' : 'border-[#3a3633] bg-[#1a1816] text-gray-300'}`}>
-                      <span>{p.label}</span>
-                      {selected && <Check size={16} />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {step === 5 && (
-            <div className="flex flex-col items-center text-center py-8">
-              <div className="text-6xl mb-4">{draft.image_url || '✨'}</div>
-              <h2 className="text-2xl font-bold mb-2">Hazırız!</h2>
-              <p className="text-sm text-gray-400 max-w-md mb-6">
-                <span className="text-yellow-400 font-semibold">{draft.product_name}</span> için 18 ajan ve 70+ tool eşliğinde uçtan uca operasyon kuruluyor.
-              </p>
-              <div className="bg-[#1a1816] border border-[#3a3633] rounded-xl px-6 py-4 text-left text-xs text-gray-400 space-y-1.5 max-w-md w-full">
-                <Summary label="Ürün" value={draft.product_name} />
-                <Summary label="Kategori" value={draft.category} />
-                <Summary label="Aşama" value={stageOptions.find((s) => s.value === draft.stage)?.label} />
-                <Summary label="Pazar" value={draft.target_market} />
-                <Summary label="Kanallar" value={draft.channels?.join(', ')} />
-                <Summary label="Bütçe" value={`₺${draft.monthly_budget_band}/ay`} />
-                <Summary label="Öncelikler" value={(draft.priorities ?? []).map((p) => priorityOptions.find((o) => o.id === p)?.label).join(', ')} />
-              </div>
-              <button onClick={completeOnboarding} className="mt-8 px-6 py-3 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-xl flex items-center gap-2">
-                <Sparkles size={16} /> İlk Analizi Başlat
-              </button>
-            </div>
-          )}
+        <div className="ob-menubar__item ob-menubar__item--md-hide">
+          <span className="ob-menubar__lbl">TOOLS</span>
+          <span className="ob-menubar__val">89</span>
         </div>
-
-        {step < 5 && (
-          <>
-            {missingFields.length > 0 && (
-              <div
-                role="alert"
-                aria-live="polite"
-                className="mt-4 px-4 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-[12px] text-red-300"
-              >
-                Devam etmek için: <span className="font-semibold">{missingFields.join(', ')}</span>
-              </div>
-            )}
-            <div className="flex items-center justify-between mt-6">
-              <button onClick={() => setOnboardingStep(Math.max(1, step - 1))} disabled={step === 1}
-                className="px-4 py-2 bg-[#262422] hover:bg-[#2e2a27] disabled:opacity-30 border border-[#3a3633] rounded-lg flex items-center gap-2 text-sm">
-                <ArrowLeft size={14} /> Geri
-              </button>
-              <span className="text-xs text-gray-500">Adım {step} / 5</span>
-              <button onClick={() => setOnboardingStep(step + 1)} disabled={!canAdvance}
-                aria-disabled={!canAdvance}
-                title={missingFields.length > 0 ? `Eksik: ${missingFields.join(', ')}` : 'Sonraki adım'}
-                className="px-5 py-2 bg-yellow-500 hover:bg-yellow-400 disabled:opacity-30 disabled:cursor-not-allowed text-black font-semibold rounded-lg flex items-center gap-2 text-sm">
-                Devam <ArrowRight size={14} />
-              </button>
-            </div>
-          </>
-        )}
+        <div className="ob-menubar__item ob-menubar__item--md-hide">
+          <span className="ob-menubar__lbl">RT</span>
+          <span className="ob-menubar__val">0.42ms</span>
+        </div>
+        <div className="ob-menubar__item">
+          <span className="ob-menubar__dot" />
+          <span className="ob-menubar__val">{hh}:{mm}<span className="ob-menubar__mute">:{ss}</span></span>
+        </div>
       </div>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/* ─── phase rail (left) ────────────────────────────────────────── */
+function PhaseRail({
+  phase, setPhase, completed,
+}: {
+  phase: number;
+  setPhase: (n: number) => void;
+  completed: number[];
+}) {
   return (
-    <div className="mb-5">
-      <label className="block text-xs font-semibold text-gray-400 mb-1.5">{label}</label>
+    <aside className="ob-rail">
+      <div className="ob-rail__head">
+        <div className="ob-rail__eyebrow">// boot phases</div>
+        <div className="ob-rail__title">Sequence</div>
+      </div>
+
+      <ol className="ob-rail__list">
+        {PHASES.map((p) => {
+          const isActive = p.n === phase;
+          const isDone = completed.includes(p.n);
+          const canJump = isDone || isActive;
+          return (
+            <li
+              key={p.n}
+              className={`ob-rail__step ${isActive ? 'is-active' : ''} ${isDone ? 'is-done' : ''} ${canJump ? 'is-jumpable' : ''}`}
+              onClick={() => { if (canJump) setPhase(p.n); }}
+            >
+              <div className="ob-rail__step-track">
+                <div className="ob-rail__step-num">
+                  {isDone ? <IcCheck size={14} /> : String(p.n).padStart(2, '0')}
+                </div>
+                {p.n < PHASES.length && <div className="ob-rail__step-line" />}
+              </div>
+              <div className="ob-rail__step-body">
+                <div className="ob-rail__step-code">{p.code}</div>
+                <div className="ob-rail__step-title">{p.title}</div>
+                <div className="ob-rail__step-sub">{p.subtitle}</div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="ob-rail__foot">
+        <div className="ob-rail__ascii">{`╔══════════════╗
+║ boot.ready   ║
+║ awaiting cfg ║
+╚══════════════╝`}</div>
+      </div>
+    </aside>
+  );
+}
+
+/* ─── agent fleet (right) ──────────────────────────────────────── */
+type AgentStatus = 'armed' | 'calibrating' | 'dormant';
+
+function AgentFleet({
+  statusMap, armedCount,
+}: {
+  statusMap: Record<string, AgentStatus>;
+  armedCount: number;
+}) {
+  const groups: FleetGroup[] = ['CORE', 'OPS', 'GROWTH', 'INTEL'];
+  return (
+    <aside className="ob-fleet">
+      <div className="ob-fleet__head">
+        <div>
+          <div className="ob-fleet__eyebrow">// agent fleet</div>
+          <div className="ob-fleet__title">Roster</div>
+        </div>
+        <div className="ob-fleet__counter">
+          <span className="ob-fleet__counter-val">{armedCount}</span>
+          <span className="ob-fleet__counter-div">/</span>
+          <span className="ob-fleet__counter-tot">{FLEET.length}</span>
+        </div>
+      </div>
+
+      <div className="ob-fleet__progress">
+        <div
+          className="ob-fleet__progress-fill"
+          style={{ width: `${(armedCount / FLEET.length) * 100}%` }}
+        />
+        <div className="ob-fleet__progress-grid">
+          {FLEET.map((_, i) => <span key={i} />)}
+        </div>
+      </div>
+
+      <div className="ob-fleet__list">
+        {groups.map((g) => {
+          const members = FLEET.filter((a) => a.group === g);
+          const armed = members.filter((a) => statusMap[a.id] === 'armed').length;
+          return (
+            <div key={g} className="ob-fleet__group">
+              <div className="ob-fleet__group-head">
+                <span>{g}</span>
+                <span className="ob-fleet__group-count">{armed}/{members.length}</span>
+              </div>
+              {members.map((a) => {
+                const status = statusMap[a.id] || 'dormant';
+                const label = status === 'armed' ? 'ARMED' : status === 'calibrating' ? 'CALIB' : 'DORM';
+                return (
+                  <div key={a.id} className={`ob-fleet__row is-${status}`}>
+                    <span className={`ob-fleet__dot is-${status}`} />
+                    <span className="ob-fleet__name">{a.name}</span>
+                    <span className="ob-fleet__status">{label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </aside>
+  );
+}
+
+/* ─── process strip (bottom) ───────────────────────────────────── */
+function ProcessStrip({
+  phase, draft, canAdvance, missing,
+}: {
+  phase: number;
+  draft: Draft;
+  canAdvance: boolean;
+  missing: string[];
+}) {
+  const filled: string[] = [
+    draft.product_name ? 'name' : '',
+    draft.category ? 'cat' : '',
+    draft.stage ? 'stage' : '',
+    draft.target_market ? 'mkt' : '',
+    (draft.channels?.length || 0) > 0 ? 'chan' : '',
+    draft.monthly_budget_band ? 'bud' : '',
+    (draft.priorities?.length || 0) > 0 ? 'prio' : '',
+  ].filter(Boolean);
+  const pct = (filled.length / 7) * 100;
+
+  return (
+    <div className="ob-procstrip">
+      <div className="ob-procstrip__group">
+        <span className="ob-procstrip__lbl">CONFIG</span>
+        <span className="ob-procstrip__val">{filled.length}/7</span>
+        <div className="ob-procstrip__bar">
+          <div className="ob-procstrip__bar-fill" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+      <div className="ob-procstrip__group ob-procstrip__group--center">
+        {filled.length > 0 ? (
+          <span className="ob-procstrip__chips">
+            {filled.map((f) => <span key={f} className="ob-procstrip__chip">{f}</span>)}
+          </span>
+        ) : (
+          <span className="ob-procstrip__mute">awaiting input ...</span>
+        )}
+      </div>
+      <div className="ob-procstrip__group ob-procstrip__group--right">
+        {!canAdvance && missing.length > 0 && (
+          <span className="ob-procstrip__warn">
+            <IcDot size={8} /> missing: {missing.join(' · ')}
+          </span>
+        )}
+        <span className="ob-procstrip__lbl">ETA</span>
+        <span className="ob-procstrip__val">{(60 - Math.floor(pct * 0.5))}s</span>
+        <span className="ob-procstrip__lbl">PHASE</span>
+        <span className="ob-procstrip__val ob-procstrip__val--acid">{String(phase).padStart(2, '0')} / 04</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── phase enter animation wrapper ────────────────────────────── */
+function PhaseInner({ phase, children }: { phase: number; children: React.ReactNode }) {
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    setEntered(false);
+    const id = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(id);
+  }, [phase]);
+  return (
+    <div className={`ob-main__inner ${entered ? 'is-entering' : 'is-pre'}`} key={phase}>
       {children}
     </div>
   );
 }
 
-function Summary({ label, value }: { label: string; value: string | undefined }) {
+/* ─── launched overlay ─────────────────────────────────────────── */
+function LaunchedOverlay() {
   return (
-    <div className="flex justify-between gap-4">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-200 text-right truncate">{value || '—'}</span>
+    <div className="ob-launched">
+      <div className="ob-launched__box">
+        <div className="ob-launched__mark"><IcSpark size={28} /></div>
+        <div className="ob-launched__title">fleet.deployed</div>
+        <div className="ob-launched__sub">22 ajan çalışıyor. CEO Agent ilk 60 saniyeni hazırlıyor.</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── main page ────────────────────────────────────────────────── */
+export function OnboardingPage() {
+  useOnboardingAssets();
+
+  const storePhase = useStore((s) => s.onboardingStep);
+  const draft = useStore((s) => s.onboardingDraft) as Draft;
+  const setOnboardingStep = useStore((s) => s.setOnboardingStep);
+  const updateOnboardingDraft = useStore((s) => s.updateOnboardingDraft);
+  const completeOnboarding = useStore((s) => s.completeOnboarding);
+  const agentCount = useStore((s) => (s.agents || []).length);
+  const toolCount = useStore((s) => (s.tools || []).length);
+
+  /* The store can persist values 1..5 from the legacy flow; clamp into 1..4. */
+  const phase = Math.min(4, Math.max(1, storePhase || 1));
+  const [launched, setLaunched] = useState(false);
+
+  const setPhase = (n: number) => setOnboardingStep(Math.min(4, Math.max(1, n)));
+  const update = (patch: Draft) => updateOnboardingDraft(patch);
+
+  /* Derive agent status from draft. */
+  const statusMap = useMemo(() => {
+    const m: Record<string, AgentStatus> = {};
+    for (const a of FLEET) {
+      const reqs = a.activates;
+      const isSet = (k: FleetActivator) => {
+        const v = draft[k];
+        if (Array.isArray(v)) return v.length > 0;
+        return !!v;
+      };
+      const fulfilled = reqs.every(isSet);
+      const partial = reqs.some(isSet);
+      m[a.id] = fulfilled ? 'armed' : (partial ? 'calibrating' : 'dormant');
+    }
+    return m;
+  }, [draft]);
+
+  const armedCount = useMemo(
+    () => Object.values(statusMap).filter((s) => s === 'armed').length,
+    [statusMap],
+  );
+
+  /* Validation per phase. */
+  const canAdvance = (() => {
+    if (phase === 1) return !!(draft.product_name && draft.category && draft.stage);
+    if (phase === 2) return !!(draft.target_market && draft.monthly_budget_band && (draft.channels?.length || 0) > 0);
+    if (phase === 3) return (draft.priorities?.length || 0) > 0;
+    return true;
+  })();
+
+  const missing = (() => {
+    if (canAdvance) return [] as string[];
+    const m: string[] = [];
+    if (phase === 1) {
+      if (!draft.product_name) m.push('product_name');
+      if (!draft.category) m.push('category');
+      if (!draft.stage) m.push('stage');
+    }
+    if (phase === 2) {
+      if (!draft.target_market) m.push('target_market');
+      if ((draft.channels?.length || 0) === 0) m.push('channels');
+      if (!draft.monthly_budget_band) m.push('budget');
+    }
+    if (phase === 3) {
+      if ((draft.priorities?.length || 0) === 0) m.push('priorities');
+    }
+    return m;
+  })();
+
+  const completed = useMemo(() => {
+    const c: number[] = [];
+    if (draft.product_name && draft.category && draft.stage) c.push(1);
+    if (draft.target_market && draft.monthly_budget_band && (draft.channels?.length || 0) > 0) c.push(2);
+    if ((draft.priorities?.length || 0) > 0) c.push(3);
+    return c;
+  }, [draft]);
+
+  /* ⌘/Ctrl+Enter to advance. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        if (canAdvance && phase < 4) setPhase(phase + 1);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canAdvance, phase]);
+
+  const handleLaunch = () => {
+    setLaunched(true);
+    /* small beat so the user actually sees fleet.deployed before navigating */
+    setTimeout(() => completeOnboarding(), 700);
+  };
+
+  const renderPhase = () => {
+    if (phase === 1) return <Phase1Product draft={draft} update={update} />;
+    if (phase === 2) return <Phase2Market draft={draft} update={update} />;
+    if (phase === 3) return <Phase3Directives draft={draft} update={update} />;
+    return (
+      <Phase4Initialize
+        draft={draft}
+        agentCount={agentCount || FLEET.length}
+        toolCount={toolCount || 89}
+        onLaunch={handleLaunch}
+      />
+    );
+  };
+
+  return (
+    <div className="ob-root ob-root--acid ob-root--comfortable has-scanlines">
+      <TopMenubar phase={phase} fleetArmed={armedCount} />
+
+      <div className="ob-frame">
+        <PhaseRail phase={phase} setPhase={setPhase} completed={completed} />
+
+        <main className="ob-main">
+          <div className="ob-main__scroll">
+            <PhaseInner phase={phase}>{renderPhase()}</PhaseInner>
+          </div>
+
+          {phase < 4 && (
+            <div className="ob-nav">
+              <button
+                className="ob-nav__btn ob-nav__btn--back"
+                disabled={phase === 1}
+                onClick={() => setPhase(phase - 1)}
+              >
+                <IcArrowLeft size={14} /> back
+              </button>
+              <div className="ob-nav__center">
+                <span className="ob-nav__hint">
+                  {canAdvance
+                    ? <>press <kbd>⌘</kbd> <kbd>↵</kbd> or click</>
+                    : <>missing :: <span className="ob-nav__missing">{missing.join(' · ')}</span></>}
+                </span>
+              </div>
+              <button
+                className="ob-nav__btn ob-nav__btn--next"
+                disabled={!canAdvance}
+                onClick={() => setPhase(phase + 1)}
+              >
+                continue <IcArrowRight size={14} />
+              </button>
+            </div>
+          )}
+        </main>
+
+        <AgentFleet statusMap={statusMap} armedCount={armedCount} />
+      </div>
+
+      <ProcessStrip phase={phase} draft={draft} canAdvance={canAdvance} missing={missing} />
+
+      {launched && <LaunchedOverlay />}
     </div>
   );
 }

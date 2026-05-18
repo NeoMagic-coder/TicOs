@@ -6,7 +6,8 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any
 
-from apps.api.core.llm.provider import LLMMessage, get_llm_provider
+from apps.api.core.llm.per_agent import get_llm_provider_for_agent
+from apps.api.core.llm.provider import LLMMessage
 from apps.api.core.logging import get_logger
 from apps.api.core.openclaw.executor import ExecutionContext, OpenClawExecutor
 from apps.api.models.schemas import AgentOutput, AgentSpec, RecommendedAction
@@ -17,10 +18,23 @@ log = get_logger(__name__)
 class BaseAgent(ABC):
     spec: AgentSpec
     primary_tools: list[str] = []
+    # Grounding sources passed through to LLMProvider.generate. Supported
+    # ids: ``"google_search"`` (live web) and ``"collectapi"`` (Turkish
+    # marketplace data via /api/v1/grounding/search). Subclasses override.
+    grounding: list[str] = []
 
     def __init__(self, spec: AgentSpec) -> None:
         self.spec = spec
-        self.llm = get_llm_provider()
+
+    @property
+    def llm(self):  # noqa: D401 — pydantic-style property
+        """Resolve the per-agent LLM provider lazily on each access.
+
+        Picks up runtime config changes (PUT /agents/{id}/llm-config) without
+        requiring a restart. The resolver is cached internally so this is
+        cheap to call repeatedly.
+        """
+        return get_llm_provider_for_agent(self.spec.agent_id)
 
     @abstractmethod
     def system_prompt(self, product_context: dict[str, Any]) -> str:
@@ -76,6 +90,7 @@ class BaseAgent(ABC):
             messages=history + [LLMMessage(role="user", content=message)],
             temperature=0.7,
             max_tokens=1500,
+            grounding=list(self.grounding) or None,
         )
 
         if resp.error and not (resp.text or "").strip():

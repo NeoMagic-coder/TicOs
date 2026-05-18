@@ -1,272 +1,444 @@
+// @ts-nocheck
+// ============================================================
+// AGENT.OS — Tools registry (OpenClaw)
+// ============================================================
+import React, { useState, useEffect, useMemo } from 'react';
+import { Icon, AgentAvatar } from '@/components/AOS/widgets';
+import { AGENTS } from '@/data/aos/mockData';
+import { useAdaptedTools } from '@/lib/aos/adapter';
 import { useStore } from '@/stores/useStore';
-import { Wrench, ToggleLeft, ToggleRight, Zap, Clock, DollarSign, ArrowLeft, Shield, Search } from 'lucide-react';
-import { useState } from 'react';
+import { BASE_URL } from '@/lib/api';
+import { pushToast } from '@/components/AOS/Toast';
 
-export function ToolsPage() {
-  const { tools, selectedToolId, setSelectedTool, toggleToolMode, agents, onboardedProduct } = useStore();
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [modeFilter, setModeFilter] = useState<'all' | 'live' | 'mock'>('all');
-  const [search, setSearch] = useState('');
+const PROVIDER_META = {
+  shopify:   { color: '#95BF47', glyph: 'sh' },
+  trendyol:  { color: '#F27A1A', glyph: 'ty' },
+  google:    { color: '#4285F4', glyph: 'go' },
+  meta:      { color: '#0866FF', glyph: 'fb' },
+  gemini:    { color: '#9B7BFF', glyph: 'gm' },
+  internal:  { color: '#7C8497', glyph: '·' },
+};
 
-  const selectedTool = tools.find((t) => t.tool_id === selectedToolId);
+const ToolRow = ({ tool, selected, onSelect }) => {
+  const p = PROVIDER_META[tool.provider] || PROVIDER_META.internal;
+  const hasStats = tool.calls != null && tool.calls > 0;
+  return (
+    <div
+      onClick={() => onSelect(tool)}
+      className="row"
+      style={{
+        gridTemplateColumns: '26px 1.5fr 1fr 90px 80px 90px 1fr',
+        cursor: 'pointer',
+        background: selected ? 'var(--bg-2)' : 'transparent',
+        borderLeft: selected ? '2px solid var(--acid)' : '2px solid transparent',
+      }}
+    >
+      <span style={{
+        width: 22, height: 22, borderRadius: 3,
+        background: p.color + '22', color: p.color,
+        border: `1px solid ${p.color}44`,
+        display: 'grid', placeItems: 'center',
+        fontFamily: 'var(--font-mono)', fontSize: 9, fontWeight: 600,
+      }}>{p.glyph}</span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12, color: 'var(--fg-1)' }}>{tool.name}</div>
+        <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tool.id}</div>
+      </div>
+      <span className="mono" style={{ fontSize: 11, color: 'var(--fg-2)' }}>{tool.category}</span>
+      <span style={{ alignSelf: 'center', justifySelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span className={`chip ${tool.mode === 'live' ? 'chip--acid' : ''}`} title={tool.degraded ? `degraded: ${tool.degradedReason || 'breaker open'}` : tool.mode}>
+          {tool.mode}
+        </span>
+        {tool.degraded && (
+          <span title={tool.degradedReason || 'son canlı çağrı mock\'a düştü'} style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--amber)' }} />
+        )}
+      </span>
+      <span className="mono tnum" style={{ fontSize: 11, color: tool.calls != null ? 'var(--fg-2)' : 'var(--fg-4)', textAlign: 'right' }}>
+        {tool.calls != null ? tool.calls : '—'}
+      </span>
+      <span className="mono tnum" style={{ fontSize: 11, color: tool.ms != null ? 'var(--fg-2)' : 'var(--fg-4)', textAlign: 'right' }}>
+        {tool.ms != null ? tool.ms + 'ms' : '—'}
+      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {hasStats && tool.success != null ? (
+          <>
+            <div style={{ flex: 1, height: 4, background: 'var(--bg-3)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{
+                width: tool.success + '%', height: '100%',
+                background: tool.success > 98 ? 'var(--acid)' : tool.success >= 90 ? 'var(--amber)' : 'var(--rose)',
+              }} />
+            </div>
+            <span className="mono tnum" style={{ fontSize: 10, color: 'var(--fg-3)', width: 38, textAlign: 'right' }}>{tool.success.toFixed(1)}%</span>
+          </>
+        ) : (
+          <span className="mono" style={{ fontSize: 10, color: 'var(--fg-4)', width: '100%', textAlign: 'right' }}>henüz çağrı yok</span>
+        )}
+      </div>
+    </div>
+  );
+};
 
-  if (selectedTool) {
-    return <ToolDetail tool={selectedTool} agents={agents} onBack={() => setSelectedTool(null)} onToggleMode={() => toggleToolMode(selectedTool.tool_id)} />;
-  }
+const ToolDetail = ({ tool }) => {
+  if (!tool) return null;
+  const p = PROVIDER_META[tool.provider] || PROVIDER_META.internal;
+  // Real allowed-agents list from the manifest (the previous version showed
+  // the first 4 agents regardless of permission).
+  const allowedIds: string[] = Array.isArray(tool.allowed_agents) ? tool.allowed_agents : [];
+  const allowed = allowedIds.length
+    ? allowedIds.map((id: string) => AGENTS.find((a) => a.id === id) || { id, name: id, glyph: id.slice(0, 2).toUpperCase(), accent: '#7C8497' })
+    : [];
+  const schemaText = tool.input_schema ? JSON.stringify(tool.input_schema, null, 2) : '— manifest input schema sağlamıyor —';
+  return (
+    <div className="panel" style={{ position: 'sticky', top: 0 }}>
+      <div className="panel__head">
+        <h3>{tool.name}</h3>
+        <span className="panel__head-tag">{tool.id}</span>
+      </div>
+      <div style={{ padding: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <span style={{
+            width: 28, height: 28, borderRadius: 3,
+            background: p.color + '22', color: p.color,
+            border: `1px solid ${p.color}44`,
+            display: 'grid', placeItems: 'center',
+            fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600,
+          }}>{p.glyph}</span>
+          <div>
+            <div className="mono" style={{ fontSize: 11, color: 'var(--fg-2)' }}>{tool.provider}</div>
+            <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>{tool.category} · {tool.mode}{tool.requires_approval ? ' · onay gerekli' : ''}</div>
+          </div>
+        </div>
 
-  const categories = ['all', ...new Set(tools.map((t) => t.category))];
-  const filtered = tools
-    .filter((t) => categoryFilter === 'all' || t.category === categoryFilter)
-    .filter((t) => modeFilter === 'all' || (modeFilter === 'live' ? t.mode === 'live' : t.mode !== 'live'))
-    .filter((t) => search === '' || t.name.toLowerCase().includes(search.toLowerCase()) || t.tool_id.toLowerCase().includes(search.toLowerCase()));
+        {tool.description && (
+          <div style={{ fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.5, marginBottom: 12 }}>
+            {tool.description}
+          </div>
+        )}
 
-  const totalCalls = tools.reduce((s, t) => s + (t.stats?.total_calls ?? 0), 0);
-  const totalCost = tools.reduce((s, t) => s + (t.stats?.total_cost_usd ?? 0), 0);
-  const liveCount = tools.filter((t) => t.mode === 'live').length;
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+          {(() => {
+            const lastAge = tool.lastCalledAt
+              ? (() => {
+                  const s = Math.round((Date.now() - new Date(tool.lastCalledAt).getTime()) / 1000);
+                  if (s < 60) return `${s}s önce`;
+                  if (s < 3600) return `${Math.round(s / 60)} dk önce`;
+                  if (s < 86400) return `${Math.round(s / 3600)} sa önce`;
+                  return `${Math.round(s / 86400)} gün önce`;
+                })()
+              : null;
+            return [
+              { l: 'Toplam Çağrı',  v: tool.calls != null ? String(tool.calls) : '—' },
+              { l: 'Avg gecikme',   v: tool.ms != null ? `${tool.ms}ms` : (tool.timeout_ms != null ? `≤ ${tool.timeout_ms}ms (timeout)` : '—') },
+              { l: 'Başarı',        v: tool.success != null ? `${tool.success.toFixed(1)}%` : '—' },
+              { l: 'Çağrı maliyet', v: tool.cost != null ? `$${tool.cost}` : '—' },
+              { l: 'Son çağrı',     v: lastAge || '—' },
+              { l: 'Durum',         v: tool.degraded ? `⚠ ${tool.degradedReason || 'degraded'}` : (tool.mode === 'live' ? '✓ ok' : '—') },
+            ];
+          })().map((s: any) => (
+            <div key={s.l}>
+              <div className="label-eyebrow">{s.l}</div>
+              <div className="mono tnum" style={{ fontSize: 14, color: s.v === '—' ? 'var(--fg-4)' : (String(s.v).startsWith('⚠') ? 'var(--amber)' : 'var(--fg-1)') }}>{s.v}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="label-eyebrow" style={{ marginBottom: 6 }}>Input Şeması</div>
+        <div className="term" style={{ fontSize: 11, marginBottom: 12, whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'auto' }}>
+          {schemaText}
+        </div>
+
+        <div className="label-eyebrow" style={{ marginBottom: 6 }}>
+          İzinli Ajanlar {allowedIds.length === 0 && <span className="mono" style={{ color: 'var(--fg-4)', fontSize: 10, marginLeft: 4 }}>(tüm ajanlara açık)</span>}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
+          {allowed.length === 0 ? (
+            <span className="mono" style={{ fontSize: 10, color: 'var(--fg-4)' }}>— kısıtlama yok —</span>
+          ) : allowed.map((a: any) => (
+            <span key={a.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 6px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 3 }}>
+              <AgentAvatar agent={a} size={12} />
+              <span className="mono" style={{ fontSize: 10, color: 'var(--fg-2)' }}>{a.id}</span>
+            </span>
+          ))}
+        </div>
+
+        <div className="label-eyebrow" style={{ marginBottom: 6 }}>Etiketler</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 14 }}>
+          {tool.tags.map(t => <span key={t} className="chip">{t}</span>)}
+        </div>
+
+        <button
+          className="btn btn--primary"
+          style={{ width: '100%' }}
+          onClick={async () => {
+            try {
+              // Tool execute requires agent_id; pick the first allowed agent
+              // for this tool (or fall back to supervisor).
+              const agentId: string =
+                (Array.isArray((tool as any).allowed_agents) && (tool as any).allowed_agents[0])
+                || 'supervisor';
+              const res = await fetch(`${BASE_URL}/api/v1/tools/execute`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tool_id: tool.id, agent_id: agentId, input: {}, dry_run: true }),
+                signal: AbortSignal.timeout(6000),
+              });
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const data = await res.json();
+              pushToast({ kind: 'success', title: `${tool.name} sandbox`, body: `Durum: ${data?.status || 'ok'} · gecikme ${data?.duration_ms ?? '?'}ms` });
+            } catch (e: any) {
+              pushToast({ kind: 'warn', title: 'Sandbox başarısız', body: e?.message || String(e) });
+            }
+          }}
+        >
+          <Icon name="play" size={12} /> Sandbox'ta Çalıştır
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const ToolsPage = () => {
+  // No fallback to mockData — the page shows an empty state if the backend
+  // manifest hasn't been loaded yet (loadTools fires on app mount).
+  const TOOLS = useAdaptedTools();
+  const hasTools = TOOLS.length > 0;
+  const loadTools = useStore((s: any) => s.loadTools);
+
+  const [cat, setCat] = useState('all');
+  const [mode, setMode] = useState('all');
+  const [q, setQ] = useState('');
+  const [selected, setSelected] = useState(TOOLS[0]);
+  const [scanning, setScanning] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const rescan = async () => {
+    setScanning(true);
+    try {
+      await loadTools();
+      pushToast({ kind: 'success', title: 'Manifest taraması bitti', body: `${TOOLS.length} tool yenilendi.` });
+    } catch (e: any) {
+      pushToast({ kind: 'warn', title: 'Tarama başarısız', body: e?.message || String(e) });
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleAddManifest = () => {
+    fileInputRef.current?.click();
+  };
+  const onManifestFile = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      // Best-effort: POST to backend (endpoint may not exist).
+      try {
+        await fetch(`${BASE_URL}/api/v1/tools`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(items),
+          signal: AbortSignal.timeout(3000),
+        });
+      } catch {
+        // Backend unavailable — keep going so the user sees feedback.
+      }
+      pushToast({ kind: 'success', title: 'Manifest yüklendi', body: `${items.length} tool eklendi (local).` });
+      await loadTools();
+    } catch (e: any) {
+      pushToast({ kind: 'error', title: 'Manifest okunamadı', body: e?.message || String(e) });
+    }
+  };
+
+  const filtered = useMemo(() => {
+    return TOOLS.filter(t => {
+      if (cat !== 'all' && t.category !== cat) return false;
+      if (mode !== 'all' && t.mode !== mode) return false;
+      if (q && !t.name.toLowerCase().includes(q.toLowerCase()) && !t.id.toLowerCase().includes(q.toLowerCase())) return false;
+      return true;
+    });
+  }, [cat, mode, q, TOOLS]);
+
+  // Totals only consider tools that actually reported stats — otherwise we'd
+  // pretend "0 calls" was a measurement when the backend simply hasn't filled
+  // the stats payload yet.
+  const toolsWithCalls = TOOLS.filter((t: any) => typeof t.calls === 'number');
+  const totalCalls = toolsWithCalls.reduce((s: number, t: any) => s + (t.calls || 0), 0);
+  const totalCost = toolsWithCalls.reduce(
+    (s: number, t: any) => s + (typeof t.cost === 'number' ? t.cost * (t.calls || 0) : 0),
+    0,
+  );
+  const hasUsageStats = totalCalls > 0;
+
+  // Real per-category counts from the live tool list (the previous version
+  // pulled hardcoded numbers from mockData.TOOL_CATEGORIES that didn't match
+  // reality after manifests changed).
+  const dynamicCategories = useMemo(() => {
+    const byCat: Record<string, number> = {};
+    for (const t of TOOLS) byCat[t.category] = (byCat[t.category] || 0) + 1;
+    const ordered = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+    return [{ id: 'all', label: 'Tümü', count: TOOLS.length }, ...ordered.map(([id, count]) => ({ id, label: id, count }))];
+  }, [TOOLS]);
 
   return (
-    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Wrench size={24} className="text-indigo-400" /> OpenClaw Tool Dashboard
-        </h1>
-        <p className="text-sm text-gray-500">
-          Tool Registry — {tools.length} tool kayıtlı
-          {onboardedProduct && <span className="text-gray-400"> · Aktif ürün: <span className="text-yellow-300 font-medium">{onboardedProduct.product_name}</span> · Kategori: {onboardedProduct.category}</span>}
-        </p>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-500">Toplam Tool</p>
-          <p className="text-2xl font-bold text-white">{tools.length}</p>
+    <div className="page">
+      <div className="page__breadcrumb mono">HOME <span>›</span> ARAÇLAR</div>
+      <div className="page__header">
+        <div>
+          <h1 className="page__title">
+            OpenClaw Registry
+            <span className="page__title-tag">{TOOLS.length} TOOL</span>
+          </h1>
+          <p className="page__sub">
+            Tüm araçların manifest kaydı — kategori, izinli ajanlar, mock/live durumu, ortalama gecikme ve maliyet.
+          </p>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-500">Toplam Çağrı</p>
-          <p className="text-2xl font-bold text-white">{totalCalls.toLocaleString('tr-TR')}</p>
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-500">Toplam Maliyet</p>
-          <p className="text-2xl font-bold text-white">${totalCost.toFixed(2)}</p>
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-500">Live / Mock</p>
-          <p className="text-2xl font-bold text-white">{liveCount} / {tools.length - liveCount}</p>
-        </div>
-      </div>
-
-      {/* Search & Filter */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn--ghost" onClick={rescan} disabled={scanning}>
+            <Icon name="refresh" size={12} /> {scanning ? 'Taranıyor…' : 'Yeniden Tara'}
+          </button>
+          <button
+            className="btn"
+            onClick={handleAddManifest}
+            title="JSON manifest dosyası yükle (tool_id, name, category, input_schema…)"
+            aria-label="Tool manifest JSON dosyası yükle"
+          >
+            <Icon name="plus" size={12} /> Manifest Ekle (.json)
+          </button>
           <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tool ara..."
-            className="w-full pl-9 pr-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            style={{ display: 'none' }}
+            onChange={(e) => onManifestFile(e.target.files?.[0] || null)}
           />
         </div>
-        <div className="flex gap-1.5 flex-wrap items-center">
-          {(['all', 'live', 'mock'] as const).map((m) => (
-            <button
-              key={`mode-${m}`}
-              onClick={() => setModeFilter(m)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                modeFilter === m
-                  ? m === 'live' ? 'bg-green-600 text-white' : m === 'mock' ? 'bg-amber-600 text-white' : 'bg-indigo-600 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:text-white'
-              }`}
-            >
-              {m === 'all' ? 'Tüm Modlar' : m === 'live' ? '🟢 Live' : '🟡 Mock'}
-            </button>
-          ))}
-          <span className="w-px h-5 bg-gray-700 mx-1" />
-          {categories.map((c) => (
-            <button
-              key={c}
-              onClick={() => setCategoryFilter(c)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                categoryFilter === c ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
-              }`}
-            >
-              {c === 'all' ? 'Tümü' : c}
-            </button>
-          ))}
-        </div>
       </div>
 
-      {/* Tool Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        {filtered.map((tool) => (
-          <div
-            key={tool.tool_id}
-            onClick={() => setSelectedTool(tool.tool_id)}
-            className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-600 cursor-pointer transition-all"
-          >
-            <div className="flex items-start justify-between">
-              <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-semibold text-white truncate">{tool.name}</h3>
-                <p className="text-[10px] text-gray-500 font-mono mt-0.5">{tool.tool_id}</p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                  tool.mode === 'live' ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
-                }`}>{tool.mode}</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); toggleToolMode(tool.tool_id); }}
-                  className="text-gray-400 hover:text-white transition-colors"
-                  title={`${tool.mode === 'mock' ? 'Live' : 'Mock'} moduna geç`}
-                >
-                  {tool.mode === 'live' ? <ToggleRight size={20} className="text-green-400" /> : <ToggleLeft size={20} />}
-                </button>
-              </div>
-            </div>
-
-            <p className="text-[11px] text-gray-400 mt-2 line-clamp-2">{tool.description}</p>
-
-            <div className="flex items-center gap-4 mt-3 text-[10px] text-gray-500">
-              <span className="flex items-center gap-1"><Zap size={10} /> {tool.stats?.total_calls ?? 0}</span>
-              <span className="flex items-center gap-1"><Clock size={10} /> {tool.stats?.avg_duration_ms ?? 0}ms</span>
-              <span className="flex items-center gap-1">✅ {((tool.stats?.success_rate ?? 0) * 100).toFixed(0)}%</span>
-              {(tool.stats?.total_cost_usd ?? 0) > 0 && (
-                <span className="flex items-center gap-1"><DollarSign size={10} /> ${(tool.stats?.total_cost_usd ?? 0).toFixed(3)}</span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-1 mt-2 flex-wrap">
-              {(tool.tags ?? []).map((tag, i) => (
-                <span key={`${tool.tool_id}-${tag}-${i}`} className="px-1.5 py-0.5 rounded text-[9px] bg-gray-800 text-gray-400">{tag}</span>
-              ))}
-            </div>
+      {/* Stats strip */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: 1, background: 'var(--border-faint)',
+        border: '1px solid var(--border)', borderRadius: 6,
+        marginBottom: 16, overflow: 'hidden',
+      }}>
+        {(() => {
+          const liveTools = TOOLS.filter((t: any) => t.mode === 'live').length;
+          const mockTools = TOOLS.length - liveTools;
+          const liveProviders = new Set(TOOLS.filter((t: any) => t.mode === 'live').map((t: any) => t.provider));
+          return [
+            { l: 'Toplam Tool',   v: String(TOOLS.length),                              sub: `${new Set(TOOLS.map((t: any) => t.category)).size} kategori` },
+            { l: 'Toplam Çağrı',  v: hasUsageStats ? totalCalls.toLocaleString('tr-TR') : '—', sub: hasUsageStats ? 'gerçek kullanım' : 'henüz çağrı kaydı yok' },
+            { l: 'Toplam Maliyet', v: hasUsageStats ? '$' + totalCost.toFixed(2) : '—', sub: hasUsageStats ? 'tüm çağrılar' : 'maliyet hesaplanmıyor' },
+            { l: 'Live / Mock',   v: `${liveTools} / ${mockTools}`,                     sub: `${liveProviders.size} provider canlı` },
+          ];
+        })().map(s => (
+          <div key={s.l} style={{ padding: '12px 16px', background: 'var(--bg-1)' }}>
+            <div className="label-eyebrow" style={{ marginBottom: 4 }}>{s.l}</div>
+            <div className="tnum" style={{ fontSize: 20, fontWeight: 500, letterSpacing: '-0.02em' }}>{s.v}</div>
+            <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)', marginTop: 2 }}>{s.sub}</div>
           </div>
         ))}
       </div>
-    </div>
-  );
-}
 
-function ToolDetail({ tool, agents, onBack, onToggleMode }: {
-  tool: import('@/types').ToolManifest;
-  agents: import('@/types').AgentSpec[];
-  onBack: () => void;
-  onToggleMode: () => void;
-}) {
-  const authorizedAgents = agents.filter((a) => tool.allowed_agents.includes(a.agent_id));
-
-  return (
-    <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
-      <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
-        <ArrowLeft size={16} /> Tüm Tool'lar
-      </button>
-
-      {/* Header */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-white">{tool.name}</h1>
-            <p className="text-xs text-gray-500 font-mono mt-1">{tool.tool_id} v{tool.version}</p>
-            <p className="text-sm text-gray-400 mt-2">{tool.description}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className={`px-3 py-1 rounded-lg text-sm font-medium ${
-              tool.mode === 'live' ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
-            }`}>{tool.mode === 'live' ? '🟢 Live' : '🟡 Mock'}</span>
-            <button onClick={onToggleMode} className="px-3 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 text-xs text-gray-300 transition-colors">
-              {tool.mode === 'mock' ? 'Live Yap' : 'Mock Yap'}
+      {/* Filters */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: 'var(--bg-1)', border: '1px solid var(--border)',
+          borderRadius: 4, padding: '4px 8px',
+        }}>
+          <Icon name="search" size={12} color="var(--fg-3)" />
+          <input
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder="Tool ara…"
+            style={{
+              background: 'transparent', border: 'none', outline: 'none',
+              color: 'var(--fg-1)', fontSize: 12, width: 180,
+            }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['all', 'live', 'mock'] as const).map(m => {
+            const count = m === 'all' ? TOOLS.length : TOOLS.filter((t: any) => t.mode === m).length;
+            const label = m === 'all' ? 'Tüm Modlar' : m === 'live' ? '● live' : '○ mock';
+            return (
+              <button key={m} className="btn btn--sm" onClick={() => setMode(m)}
+                title={`${m === 'all' ? 'Tümü' : m} · ${count} tool`}
+                style={{
+                  background: mode === m ? 'var(--bg-3)' : 'var(--bg-1)',
+                  borderColor: mode === m ? 'var(--border-strong)' : 'var(--border)',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                }}>
+                {label}
+                <span className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ width: 1, height: 18, background: 'var(--border)' }} />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {dynamicCategories.slice(0, 12).map((c) => (
+            <button key={c.id} className="btn btn--sm" onClick={() => setCat(c.id)}
+              style={{
+                background: cat === c.id ? 'var(--acid-soft)' : 'var(--bg-1)',
+                color: cat === c.id ? 'var(--acid)' : 'var(--fg-2)',
+                borderColor: cat === c.id ? 'var(--border-accent)' : 'var(--border)',
+              }}>
+              <span className="mono">{c.label}</span>
+              <span style={{ color: 'var(--fg-4)', marginLeft: 4 }}>{c.count}</span>
             </button>
-          </div>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6">
-          <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-            <p className="text-lg font-bold text-white">{tool.stats?.total_calls ?? 0}</p>
-            <p className="text-[10px] text-gray-500">Toplam Çağrı</p>
-          </div>
-          <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-            <p className="text-lg font-bold text-white">{((tool.stats?.success_rate ?? 0) * 100).toFixed(0)}%</p>
-            <p className="text-[10px] text-gray-500">Başarı Oranı</p>
-          </div>
-          <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-            <p className="text-lg font-bold text-white">{tool.stats?.avg_duration_ms ?? 0}ms</p>
-            <p className="text-[10px] text-gray-500">Ort. Süre</p>
-          </div>
-          <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-            <p className="text-lg font-bold text-white">${(tool.stats?.total_cost_usd ?? 0).toFixed(3)}</p>
-            <p className="text-[10px] text-gray-500">Toplam Maliyet</p>
-          </div>
-          <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-            <p className="text-lg font-bold text-white">${(tool.cost_estimate?.per_call_usd ?? tool.cost_estimate_usd ?? 0).toFixed(4)}</p>
-            <p className="text-[10px] text-gray-500">Çağrı Maliyeti</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Config */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-white mb-3">⚙️ Yapılandırma</h3>
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between py-1.5 border-b border-gray-800"><span className="text-gray-500">Kategori</span><span className="text-white">{tool.category}</span></div>
-            <div className="flex justify-between py-1.5 border-b border-gray-800"><span className="text-gray-500">Provider</span><span className="text-white">{tool.provider}</span></div>
-            <div className="flex justify-between py-1.5 border-b border-gray-800"><span className="text-gray-500">Auth Gerekli</span><span className="text-white">{tool.auth_required ? 'Evet' : 'Hayır'}</span></div>
-            <div className="flex justify-between py-1.5 border-b border-gray-800"><span className="text-gray-500">Rate Limit</span><span className="text-white">{tool.rate_limit?.requests_per_minute ?? '—'}{tool.rate_limit ? '/dk' : ''}</span></div>
-            <div className="flex justify-between py-1.5 border-b border-gray-800"><span className="text-gray-500">Timeout</span><span className="text-white">{tool.timeout_ms}ms</span></div>
-            <div className="flex justify-between py-1.5 border-b border-gray-800"><span className="text-gray-500">Retry</span><span className="text-white">{tool.retry ? `${tool.retry.max_attempts}x (${tool.retry.backoff})` : '—'}</span></div>
-            <div className="flex justify-between py-1.5 border-b border-gray-800"><span className="text-gray-500">Onay Gerekli</span><span className={tool.requires_approval ? 'text-orange-400' : 'text-green-400'}>{tool.requires_approval ? 'Evet' : 'Hayır'}</span></div>
-            <div className="flex justify-between py-1.5"><span className="text-gray-500">Fallback</span><span className="text-white font-mono">{tool.fallback_tool_id || '—'}</span></div>
-          </div>
-        </div>
-
-        {/* Authorized Agents */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-            <Shield size={14} className="text-indigo-400" /> Yetkili Ajanlar ({authorizedAgents.length})
-          </h3>
-          <div className="space-y-2">
-            {authorizedAgents.map((agent) => (
-              <div key={agent.agent_id} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-800/50">
-                <span className="text-lg">{agent.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-white">{agent.name}</p>
-                  <p className="text-[10px] text-gray-500">{agent.role}</p>
-                </div>
-                <span className={`w-2 h-2 rounded-full ${
-                  agent.status === 'active' ? 'bg-green-400' :
-                  agent.status === 'busy' ? 'bg-amber-400' : 'bg-gray-400'
-                }`} />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Schemas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-white mb-3">📥 Input Schema</h3>
-          <pre className="text-[11px] text-gray-300 bg-gray-800 rounded-lg p-3 overflow-auto max-h-60">
-            {JSON.stringify(tool.input_schema, null, 2)}
-          </pre>
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-white mb-3">📤 Output Schema</h3>
-          <pre className="text-[11px] text-gray-300 bg-gray-800 rounded-lg p-3 overflow-auto max-h-60">
-            {JSON.stringify(tool.output_schema, null, 2)}
-          </pre>
-        </div>
-      </div>
-
-      {/* Tags */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-white mb-3">🏷️ Etiketler</h3>
-        <div className="flex flex-wrap gap-2">
-          {(tool.tags ?? []).map((tag, i) => (
-            <span key={`${tag}-${i}`} className="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-xs text-indigo-400">{tag}</span>
           ))}
         </div>
       </div>
+
+      {/* List + detail */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 16 }}>
+        <div className="panel">
+          <div className="row" style={{
+            gridTemplateColumns: '26px 1.5fr 1fr 90px 80px 90px 1fr',
+            background: 'var(--bg-2)',
+            borderBottom: '1px solid var(--border)',
+            padding: '8px 14px',
+          }}>
+            <span />
+            <span className="label-eyebrow">Tool</span>
+            <span className="label-eyebrow">Kategori</span>
+            <span className="label-eyebrow">Mod</span>
+            <span className="label-eyebrow" style={{ textAlign: 'right' }}>Çağrı</span>
+            <span className="label-eyebrow" style={{ textAlign: 'right' }}>Gecikme</span>
+            <span className="label-eyebrow">Başarı</span>
+          </div>
+          <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+            {filtered.map(t => (
+              <ToolRow key={t.id} tool={t} selected={selected?.id === t.id} onSelect={setSelected} />
+            ))}
+            {!filtered.length && hasTools && (
+              <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-3)' }} className="mono">
+                filtreyle eşleşen tool yok
+              </div>
+            )}
+            {!hasTools && (
+              <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-3)' }} className="mono">
+                — manifest yüklenmedi —
+                <div style={{ marginTop: 10, fontSize: 11 }}>
+                  Backend `/api/v1/tools` boş döndü ya da erişilemiyor.
+                </div>
+                <button className="btn btn--sm" style={{ marginTop: 12 }} onClick={rescan} disabled={scanning}>
+                  <Icon name="refresh" size={10} /> {scanning ? 'Taranıyor…' : 'Yeniden Tara'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <ToolDetail tool={selected} />
+      </div>
     </div>
   );
-}
+};
+
+
+
+
+export default ToolsPage;

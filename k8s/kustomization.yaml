@@ -1,0 +1,56 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: oneproduct
+
+commonLabels:
+  app.kubernetes.io/name: oneproduct
+  app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+
+replicas:
+  - name: oneproduct-api
+    count: 3
+  - name: oneproduct-web
+    count: 2
+
+images:
+  - name: REGISTRY/api
+    newName: ghcr.io/yourorg/oneproduct/api
+    newTag: latest
+  - name: REGISTRY/web
+    newName: ghcr.io/yourorg/oneproduct/web
+    newTag: latest
+
+configMapGenerator:
+  - name: oneproduct-config
+    behavior: merge
+    literals:
+      - VITE_API_BASE_URL=http://api.oneproduct.svc.cluster.local:8000
+      - LOG_LEVEL=info
+
+secretGenerator:
+  - name: oneproduct-secrets
+    behavior: merge
+    envs:
+      - .env.secret
+
+vars:
+  - name: API_SERVICE_HOST
+    objref:
+      kind: Service
+      name: api
+      apiVersion: v1
+    fieldref:
+      fieldpath: metadata.name
+  - name: WEB_SERVICE_HOST
+    objref:
+      kind: Service
+      name: web
+      apiVersion: v1
+    fieldref:
+      fieldpath: metadata.name

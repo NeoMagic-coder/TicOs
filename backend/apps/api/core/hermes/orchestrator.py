@@ -18,6 +18,10 @@ from typing import Any
 
 from apps.api.agents.critic import CriticAgent, CriticScore, get_critic
 from apps.api.agents.registry import AgentRegistry, get_agent_registry
+from apps.api.core.budget import (
+    is_agent_exhausted as _is_agent_budget_exhausted,
+    record_agent_spend as _record_agent_spend,
+)
 from apps.api.core.config import get_settings
 from apps.api.core.hermes.router import RoutingDecision
 from apps.api.core.hermes.task_graph import TaskGraph, TaskNode
@@ -328,6 +332,39 @@ class HermesOrchestrator:
         _node_started = _node_timer.monotonic()
         await emit("agent_started", agent_id=node.agent_id, title=node.title)
 
+        # Paperclip-style monthly budget gate. When the agent's monthly cap
+        # is exhausted we synthesise an ``escalated`` output and skip the
+        # real run so the user sees *why* nothing happened instead of a
+        # silent timeout. ``is_agent_exhausted`` returns False whenever the
+        # cap is 0 (unset) so unconfigured agents are unaffected.
+        if _is_agent_budget_exhausted(node.agent_id):
+            await emit(
+                "agent_budget_exhausted",
+                agent_id=node.agent_id,
+                title=node.title,
+            )
+            from datetime import UTC as _UTC, datetime as _dt
+            _now = _dt.now(_UTC)
+            output = AgentOutput(
+                agent_id=node.agent_id,
+                task_id=task_id,
+                status="escalated",
+                confidence=0.0,
+                summary=f"Aylık bütçe tükendi — {node.agent_id} bu ay için çalıştırılamaz.",
+                content="Bütçe envanteri aşıldı; supervisor onayı veya bütçe artırımı gerekiyor.",
+                started_at=_now,
+                completed_at=_now,
+            )
+            await emit(
+                "agent_completed",
+                agent_id=node.agent_id,
+                status=output.status,
+                confidence=0.0,
+                critic_score=None,
+                tools=[],
+            )
+            return output, [], None
+
         output, tools_called, node_cost_usd = await self._run_node(node, task_id, history, product_context)
         _node_duration_ms = (_node_timer.monotonic() - _node_started) * 1000
         for tool_id in tools_called:
@@ -383,6 +420,7 @@ class HermesOrchestrator:
             confidence=round(output.confidence, 3),
             critic_score=critic_score.score if critic_score else None,
             tools=tools_called,
+            cost_usd=round(float(node_cost_usd), 6),
         )
 
         # Record stats — fire-and-forget so a DB error never blocks the response.
@@ -394,6 +432,14 @@ class HermesOrchestrator:
             success=output.status in ("completed", "escalated"),
             cost_usd=node_cost_usd,
         ))
+
+        # Paperclip-style monthly spend ledger — also fire-and-forget so a
+        # transient DB hiccup never blocks the response. We use to_thread
+        # because the budget helpers use the sync session_scope context.
+        if node_cost_usd > 0:
+            asyncio.create_task(asyncio.to_thread(
+                _record_agent_spend, node.agent_id, float(node_cost_usd)
+            ))
 
         return output, tools_called, critic_score
 

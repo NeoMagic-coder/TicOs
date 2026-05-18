@@ -1,6 +1,6 @@
 import { useStore } from '@/stores/useStore';
 import { Activity, Target, Wallet, Layers, ChevronRight, ChevronDown, Sparkles, AlertCircle, Wifi, WifiOff, Command } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const stageLabel: Record<string, string> = {
   idea: 'Fikir',
@@ -36,6 +36,7 @@ export function ProductContextBar() {
   const switchToProduct = useStore((s) => s.switchToProduct);
   const setCurrentPage = useStore((s) => s.setCurrentPage);
   const setOnboardingStep = useStore((s) => s.setOnboardingStep);
+  const resetOnboardingDraft = useStore((s) => s.resetOnboardingDraft);
   const quickAsk = useStore((s) => s.quickAsk);
   const currentPage = useStore((s) => s.currentPage);
   const backendStatus = useStore((s) => s.backendStatus);
@@ -47,6 +48,20 @@ export function ProductContextBar() {
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [suggestionIdx, setSuggestionIdx] = useState(0);
+  const switcherRef = useRef<HTMLDivElement>(null);
+
+  // Close the product switcher on any outside click. Without this, the dropdown
+  // can swallow the first row-click via focus/blur races, requiring a second
+  // click to actually switch.
+  useEffect(() => {
+    if (!switcherOpen) return;
+    const onDocDown = (e: MouseEvent) => {
+      if (!switcherRef.current) return;
+      if (!switcherRef.current.contains(e.target as Node)) setSwitcherOpen(false);
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [switcherOpen]);
 
   // Poll backend health every 20s. Cheap GET /health with a 2s timeout.
   // Also sync tool manifests from the backend on first mount so live/mock
@@ -86,10 +101,11 @@ export function ProductContextBar() {
     health >= 75 ? 'text-emerald-400' : health >= 50 ? 'text-yellow-400' : 'text-red-400';
 
   return (
-    <div className="sticky top-0 z-30 bg-gray-950/95 backdrop-blur border-b border-gray-800 px-4 py-2 flex items-center gap-3 text-xs">
+    <div className="sticky top-0 z-30 bg-gray-950/95 backdrop-blur border-b border-gray-800 px-4 py-2 flex items-center gap-3 text-xs flex-wrap min-w-0">
       {/* Product switcher — click to open dropdown, then pick to switch active product. */}
-      <div className="relative">
+      <div className="relative" ref={switcherRef}>
         <button
+          type="button"
           onClick={() => setSwitcherOpen((v) => !v)}
           className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-gray-800/70 transition-colors"
           title="Aktif ürünü değiştir"
@@ -118,7 +134,19 @@ export function ProductContextBar() {
             {products.map((p) => (
               <button
                 key={p.product_name}
-                onClick={() => {
+                type="button"
+                onMouseDown={(e) => {
+                  // Use mousedown so the switch fires before any focus/blur on
+                  // the trigger can re-toggle the menu. Without this, the first
+                  // click could be swallowed by the open/close race.
+                  e.preventDefault();
+                  if (p.product_name !== product.product_name) switchToProduct(p.product_name);
+                  setSwitcherOpen(false);
+                }}
+                onClick={(e) => {
+                  // Keyboard activation (Enter) doesn't fire mousedown — keep
+                  // a click handler for accessibility.
+                  if (e.detail !== 0) return; // skip when triggered by mouse (already handled)
                   if (p.product_name !== product.product_name) switchToProduct(p.product_name);
                   setSwitcherOpen(false);
                 }}
@@ -142,7 +170,11 @@ export function ProductContextBar() {
             ))}
             <div className="border-t border-gray-800 mt-1 pt-1">
               <button
+                type="button"
                 onClick={() => {
+                  // Wipe any leftover wizard state so step 1 starts blank,
+                  // not pre-filled with the previously-onboarded product.
+                  resetOnboardingDraft();
                   setOnboardingStep(1);
                   setCurrentPage('onboarding');
                   setSwitcherOpen(false);
@@ -159,9 +191,14 @@ export function ProductContextBar() {
       <Divider />
 
       <Pill icon={<Layers size={11} />} label="Kategori" value={product.category} />
-      <Pill icon={<Activity size={11} />} label="Aşama" value={stageLabel[product.stage] ?? product.stage} />
-      <Pill icon={<Target size={11} />} label="Pazar" value={marketLabel[product.target_market] ?? product.target_market} />
-      <Pill icon={<Wallet size={11} />} label="Bütçe" value={`${product.monthly_budget_band}/ay`} />
+      <Pill icon={<Activity size={11} />} label="Aşama" value={stageLabel[product.stage] ?? product.stage} hideOn="lg" />
+      <Pill icon={<Target size={11} />} label="Pazar" value={marketLabel[product.target_market] ?? product.target_market} hideOn="lg" />
+      <Pill
+        icon={<Wallet size={11} />}
+        label="Bütçe"
+        value={product.monthly_budget_band ? `₺${product.monthly_budget_band}/ay` : '—'}
+        hideOn="xl"
+      />
 
       {/* Command launcher — always visible, rotating suggestion chip. */}
       <div className="hidden md:flex items-center gap-1.5 ml-2">
@@ -178,7 +215,8 @@ export function ProductContextBar() {
         <button
           onClick={() => sendUserMessage(SUGGESTIONS[suggestionIdx])}
           className="px-2 py-1 rounded-md bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-[10px] hover:bg-indigo-500/20 transition-colors max-w-[220px] truncate"
-          title="Bu öneriyi Supervisor'a gönder"
+          title={`Supervisor'a gönder: "${SUGGESTIONS[suggestionIdx]}"`}
+          aria-label={SUGGESTIONS[suggestionIdx]}
         >
           {SUGGESTIONS[suggestionIdx]}
         </button>
@@ -260,9 +298,23 @@ function BackendStatusBadge({
   );
 }
 
-function Pill({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Pill({
+  icon,
+  label,
+  value,
+  hideOn,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  hideOn?: 'lg' | 'xl';
+}) {
+  const hideClass = hideOn === 'lg' ? 'hidden lg:flex' : hideOn === 'xl' ? 'hidden xl:flex' : 'flex';
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-gray-900 border border-gray-800">
+    <div
+      className={`${hideClass} items-center gap-1.5 px-2 py-1 rounded-md bg-gray-900 border border-gray-800`}
+      title={`${label}: ${value}`}
+    >
       <span className="text-gray-500">{icon}</span>
       <span className="text-[9px] text-gray-500 uppercase tracking-widest">{label}</span>
       <span className="text-[11px] font-medium text-gray-200 truncate max-w-[140px]">{value}</span>

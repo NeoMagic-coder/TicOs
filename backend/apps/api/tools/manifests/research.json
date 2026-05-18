@@ -10,19 +10,37 @@
     "input_schema": {
       "type": "object",
       "properties": {
-        "keyword": {"type": "string"},
-        "region": {"type": "string", "default": "TR"}
+        "keyword": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string",
+          "default": "TR"
+        }
       },
-      "required": ["keyword"]
+      "required": [
+        "keyword"
+      ]
     },
     "output_schema": {
       "type": "object",
-      "properties": {"trend_pct_12m": {"type": "string"}}
+      "properties": {
+        "trend_pct_12m": {
+          "type": "string"
+        }
+      }
     },
-    "allowed_agents": ["market_research_agent", "supervisor", "analytics_agent"],
+    "allowed_agents": [
+      "market_research_agent",
+      "supervisor",
+      "analytics_agent"
+    ],
     "cost_estimate_usd": 0.001,
     "mode": "mock",
-    "tags": ["research", "trend"]
+    "tags": [
+      "research",
+      "trend"
+    ]
   },
   {
     "tool_id": "competitor_profile_builder",
@@ -34,17 +52,30 @@
     "timeout_ms": 30000,
     "input_schema": {
       "type": "object",
-      "properties": {"url": {"type": "string"}},
+      "properties": {
+        "url": {
+          "type": "string"
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"profile": {"type": "object"}}
+      "properties": {
+        "profile": {
+          "type": "object"
+        }
+      }
     },
-    "allowed_agents": ["market_research_agent"],
+    "allowed_agents": [
+      "market_research_agent"
+    ],
     "cost_estimate_usd": 0.008,
     "mode": "mock",
-    "tags": ["research", "competitor"]
+    "tags": [
+      "research",
+      "competitor"
+    ]
   },
   {
     "tool_id": "niche_scorer",
@@ -56,17 +87,31 @@
     "timeout_ms": 12000,
     "input_schema": {
       "type": "object",
-      "properties": {"niche": {"type": "string"}},
+      "properties": {
+        "niche": {
+          "type": "string"
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"score": {"type": "number"}}
+      "properties": {
+        "score": {
+          "type": "number"
+        }
+      }
     },
-    "allowed_agents": ["market_research_agent", "supervisor"],
+    "allowed_agents": [
+      "market_research_agent",
+      "supervisor"
+    ],
     "cost_estimate_usd": 0.002,
-    "mode": "mock",
-    "tags": ["research", "scoring"]
+    "mode": "live",
+    "tags": [
+      "research",
+      "scoring"
+    ]
   },
   {
     "tool_id": "demand_estimator",
@@ -78,16 +123,100 @@
     "timeout_ms": 15000,
     "input_schema": {
       "type": "object",
-      "properties": {"keyword": {"type": "string"}},
+      "properties": {
+        "keyword": {
+          "type": "string"
+        }
+      },
       "required": []
     },
     "output_schema": {
       "type": "object",
-      "properties": {"monthly_searches": {"type": "integer"}}
+      "properties": {
+        "monthly_searches": {
+          "type": "integer"
+        }
+      }
     },
-    "allowed_agents": ["market_research_agent", "analytics_agent"],
+    "allowed_agents": [
+      "market_research_agent",
+      "analytics_agent"
+    ],
     "cost_estimate_usd": 0.003,
     "mode": "mock",
-    "tags": ["research"]
+    "tags": [
+      "research"
+    ]
+  },
+  {
+    "tool_id": "web_search_grounded",
+    "name": "Google Search Grounded Answer",
+    "description": "Soruyu Gemini + Google Search ile yanıtlar; kaynak URI'leri döndürür.",
+    "category": "research",
+    "provider": "gemini",
+    "auth_required": true,
+    "timeout_ms": 30000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 128,
+          "maximum": 4096,
+          "default": 800
+        }
+      },
+      "required": [
+        "query"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "answer": {
+          "type": "string"
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "uri": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "degraded": {
+          "type": "boolean"
+        }
+      }
+    },
+    "allowed_agents": [
+      "market_research_agent",
+      "supervisor",
+      "analytics_agent"
+    ],
+    "cost_estimate_usd": 0.003,
+    "mode": "live",
+    "tags": [
+      "research",
+      "grounding",
+      "search"
+    ]
   }
 ]

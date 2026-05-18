@@ -10,10 +10,15 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
 @router.get("", response_model=list[Task])
-async def list_tasks(status: TaskStatus | None = None) -> list[Task]:
+async def list_tasks(
+    status: TaskStatus | None = None,
+    goal_id: str | None = None,
+) -> list[Task]:
     tasks = get_task_store().all()
     if status:
         tasks = [t for t in tasks if t.status == status]
+    if goal_id:
+        tasks = [t for t in tasks if t.goal_id == goal_id]
     return tasks
 
 

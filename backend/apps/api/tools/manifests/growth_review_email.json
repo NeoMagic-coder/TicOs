@@ -5,12 +5,31 @@
     "description": "Dönüşüm darboğazlarını tespit eder.",
     "category": "growth",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"url": {"type": "string"}}},
-    "output_schema": {"type": "object", "properties": {"issues": {"type": "array"}}},
-    "allowed_agents": ["growth_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "issues": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "growth_agent"
+    ],
     "cost_estimate_usd": 0.004,
     "mode": "mock",
-    "tags": ["growth", "cro"]
+    "tags": [
+      "growth",
+      "cro"
+    ]
   },
   {
     "tool_id": "ab_test_designer",
@@ -18,12 +37,31 @@
     "description": "Hipotez + sample size + süre önerisi.",
     "category": "growth",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"hypothesis": {"type": "string"}}},
-    "output_schema": {"type": "object", "properties": {"plan": {"type": "object"}}},
-    "allowed_agents": ["growth_agent", "analytics_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "hypothesis": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "plan": {
+          "type": "object"
+        }
+      }
+    },
+    "allowed_agents": [
+      "growth_agent",
+      "analytics_agent"
+    ],
     "cost_estimate_usd": 0.002,
-    "mode": "mock",
-    "tags": ["growth"]
+    "mode": "live",
+    "tags": [
+      "growth"
+    ]
   },
   {
     "tool_id": "upsell_opportunity_finder",
@@ -31,12 +69,31 @@
     "description": "Upsell fırsatları.",
     "category": "growth",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"product_id": {"type": "string"}}},
-    "output_schema": {"type": "object", "properties": {"opportunities": {"type": "array"}}},
-    "allowed_agents": ["growth_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "opportunities": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "growth_agent"
+    ],
     "cost_estimate_usd": 0.003,
     "mode": "mock",
-    "tags": ["growth", "upsell"]
+    "tags": [
+      "growth",
+      "upsell"
+    ]
   },
   {
     "tool_id": "bundle_designer",
@@ -44,12 +101,31 @@
     "description": "Cross-sell bundle.",
     "category": "growth",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"anchor": {"type": "string"}}},
-    "output_schema": {"type": "object", "properties": {"bundles": {"type": "array"}}},
-    "allowed_agents": ["growth_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "anchor": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "bundles": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "growth_agent"
+    ],
     "cost_estimate_usd": 0.003,
     "mode": "mock",
-    "tags": ["growth", "bundle"]
+    "tags": [
+      "growth",
+      "bundle"
+    ]
   },
   {
     "tool_id": "review_aggregator",
@@ -57,12 +133,30 @@
     "description": "Tüm kanal yorumlarını tek yere toplar.",
     "category": "review",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"product_id": {"type": "string"}}},
-    "output_schema": {"type": "object", "properties": {"reviews": {"type": "array"}}},
-    "allowed_agents": ["review_reputation_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "reviews": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "review_reputation_agent"
+    ],
     "cost_estimate_usd": 0.002,
     "mode": "mock",
-    "tags": ["review"]
+    "tags": [
+      "review"
+    ]
   },
   {
     "tool_id": "review_sentiment_analyzer",
@@ -70,12 +164,32 @@
     "description": "Pozitif/nötr/negatif sınıflar.",
     "category": "review",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"texts": {"type": "array"}}},
-    "output_schema": {"type": "object", "properties": {"sentiments": {"type": "array"}}},
-    "allowed_agents": ["review_reputation_agent", "support_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "texts": {
+          "type": "array"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "sentiments": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "review_reputation_agent",
+      "support_agent"
+    ],
     "cost_estimate_usd": 0.001,
     "mode": "mock",
-    "tags": ["review", "nlp"]
+    "tags": [
+      "review",
+      "nlp"
+    ]
   },
   {
     "tool_id": "review_response_generator",
@@ -83,13 +197,32 @@
     "description": "Marka tonuna uygun yanıt taslağı.",
     "category": "review",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"text": {"type": "string"}}},
-    "output_schema": {"type": "object", "properties": {"response": {"type": "string"}}},
-    "allowed_agents": ["review_reputation_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "response": {
+          "type": "string"
+        }
+      }
+    },
+    "allowed_agents": [
+      "review_reputation_agent"
+    ],
     "requires_approval": true,
     "cost_estimate_usd": 0.003,
-    "mode": "mock",
-    "tags": ["review", "generation"]
+    "mode": "live",
+    "tags": [
+      "review",
+      "generation"
+    ]
   },
   {
     "tool_id": "klaviyo_flow_setup_guide",
@@ -98,12 +231,30 @@
     "category": "email",
     "provider": "klaviyo",
     "auth_required": true,
-    "input_schema": {"type": "object", "properties": {"type": {"type": "string"}}},
-    "output_schema": {"type": "object", "properties": {"flow": {"type": "object"}}},
-    "allowed_agents": ["email_crm_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "flow": {
+          "type": "object"
+        }
+      }
+    },
+    "allowed_agents": [
+      "email_crm_agent"
+    ],
     "cost_estimate_usd": 0.003,
     "mode": "mock",
-    "tags": ["email"]
+    "tags": [
+      "email"
+    ]
   },
   {
     "tool_id": "email_sequence_writer",
@@ -111,12 +262,31 @@
     "description": "N adımlı email serisi üretir.",
     "category": "email",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"trigger": {"type": "string"}}},
-    "output_schema": {"type": "object", "properties": {"emails": {"type": "array"}}},
-    "allowed_agents": ["email_crm_agent", "content_seo_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "trigger": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "emails": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "email_crm_agent",
+      "content_seo_agent"
+    ],
     "cost_estimate_usd": 0.012,
-    "mode": "mock",
-    "tags": ["email"]
+    "mode": "live",
+    "tags": [
+      "email"
+    ]
   },
   {
     "tool_id": "segment_builder",
@@ -124,11 +294,30 @@
     "description": "Davranış + RFM bazlı müşteri segmenti.",
     "category": "email",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"rules": {"type": "array"}}},
-    "output_schema": {"type": "object", "properties": {"segment": {"type": "object"}}},
-    "allowed_agents": ["email_crm_agent", "marketing_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "rules": {
+          "type": "array"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "segment": {
+          "type": "object"
+        }
+      }
+    },
+    "allowed_agents": [
+      "email_crm_agent",
+      "marketing_agent"
+    ],
     "cost_estimate_usd": 0.001,
     "mode": "mock",
-    "tags": ["email"]
+    "tags": [
+      "email"
+    ]
   }
 ]

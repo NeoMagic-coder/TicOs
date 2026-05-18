@@ -5,12 +5,31 @@
     "description": "10 marka ismi alternatifi (skorlu).",
     "category": "brand",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"vibe": {"type": "string"}}},
-    "output_schema": {"type": "object", "properties": {"names": {"type": "array"}}},
-    "allowed_agents": ["brand_identity_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "vibe": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "names": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "brand_identity_agent"
+    ],
     "cost_estimate_usd": 0.008,
-    "mode": "mock",
-    "tags": ["brand", "naming"]
+    "mode": "live",
+    "tags": [
+      "brand",
+      "naming"
+    ]
   },
   {
     "tool_id": "color_palette_generator",
@@ -18,12 +37,31 @@
     "description": "Birincil/ikincil/nötr renk seti üretir.",
     "category": "brand",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"mood": {"type": "string"}}},
-    "output_schema": {"type": "object", "properties": {"palette": {"type": "array"}}},
-    "allowed_agents": ["brand_identity_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "mood": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "palette": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "brand_identity_agent"
+    ],
     "cost_estimate_usd": 0.001,
-    "mode": "mock",
-    "tags": ["brand", "design"]
+    "mode": "live",
+    "tags": [
+      "brand",
+      "design"
+    ]
   },
   {
     "tool_id": "target_persona_builder",
@@ -31,12 +69,32 @@
     "description": "2-3 detaylı persona kartı üretir.",
     "category": "brand",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"product": {"type": "string"}}},
-    "output_schema": {"type": "object", "properties": {"personas": {"type": "array"}}},
-    "allowed_agents": ["brand_identity_agent", "marketing_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "product": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "personas": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "brand_identity_agent",
+      "marketing_agent"
+    ],
     "cost_estimate_usd": 0.005,
-    "mode": "mock",
-    "tags": ["brand", "persona"]
+    "mode": "live",
+    "tags": [
+      "brand",
+      "persona"
+    ]
   },
   {
     "tool_id": "margin_calculator",
@@ -46,14 +104,34 @@
     "provider": "internal",
     "input_schema": {
       "type": "object",
-      "properties": {"cost": {"type": "number"}, "price": {"type": "number"}},
+      "properties": {
+        "cost": {
+          "type": "number"
+        },
+        "price": {
+          "type": "number"
+        }
+      },
       "required": []
     },
-    "output_schema": {"type": "object", "properties": {"margin_pct": {"type": "number"}}},
-    "allowed_agents": ["pricing_agent", "analytics_agent", "supervisor"],
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "margin_pct": {
+          "type": "number"
+        }
+      }
+    },
+    "allowed_agents": [
+      "pricing_agent",
+      "analytics_agent",
+      "supervisor"
+    ],
     "cost_estimate_usd": 0.0,
-    "mode": "mock",
-    "tags": ["pricing"]
+    "mode": "live",
+    "tags": [
+      "pricing"
+    ]
   },
   {
     "tool_id": "competitor_price_lookup",
@@ -61,12 +139,94 @@
     "description": "Rakip ürün fiyatlarını toplar ve karşılaştırır.",
     "category": "pricing",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"product_id": {"type": "string"}}},
-    "output_schema": {"type": "object", "properties": {"competitors": {"type": "array"}}},
-    "allowed_agents": ["pricing_agent", "analytics_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "competitors": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "pricing_agent",
+      "analytics_agent"
+    ],
     "cost_estimate_usd": 0.005,
     "mode": "mock",
-    "tags": ["pricing", "competitor"]
+    "tags": [
+      "pricing",
+      "competitor"
+    ]
+  },
+  {
+    "tool_id": "competitor_price_scan",
+    "name": "Rakip Fiyat Taraması",
+    "description": "Birden fazla SKU için rakip fiyatlarını tarar; ölçüm zaman damgası ile döndürür.",
+    "category": "pricing",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "skus": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sku": {"type": "string"},
+              "query": {"type": "string"}
+            },
+            "required": ["sku"]
+          }
+        },
+        "source": {"type": "string"},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 50}
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "measured_at": {"type": "string"},
+        "source": {"type": "string"},
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sku": {"type": "string"},
+              "avg": {"type": "number"},
+              "min": {"type": "number"},
+              "max": {"type": "number"},
+              "samples": {"type": "integer"}
+            }
+          }
+        }
+      }
+    },
+    "allowed_agents": [
+      "pricing_agent",
+      "analytics_agent",
+      "pricing_finance_agent"
+    ],
+    "cost_estimate_usd": 0.01,
+    "mode": "live",
+    "tags": [
+      "pricing",
+      "competitor",
+      "scan",
+      "collectapi"
+    ]
   },
   {
     "tool_id": "campaign_discount_simulator",
@@ -74,12 +234,32 @@
     "description": "Farklı indirim oranlarının satış etkisini simüle eder.",
     "category": "pricing",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"discount_pct": {"type": "number"}}},
-    "output_schema": {"type": "object", "properties": {"estimated_uplift": {"type": "number"}}},
-    "allowed_agents": ["pricing_agent", "marketing_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "discount_pct": {
+          "type": "number"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "estimated_uplift": {
+          "type": "number"
+        }
+      }
+    },
+    "allowed_agents": [
+      "pricing_agent",
+      "marketing_agent"
+    ],
     "cost_estimate_usd": 0.001,
-    "mode": "mock",
-    "tags": ["pricing", "simulation"]
+    "mode": "live",
+    "tags": [
+      "pricing",
+      "simulation"
+    ]
   },
   {
     "tool_id": "cogs_calculator",
@@ -87,12 +267,33 @@
     "description": "Ürün maliyeti + kargo + paketleme + komisyon.",
     "category": "product",
     "provider": "internal",
-    "input_schema": {"type": "object", "properties": {"unit_cost": {"type": "number"}}},
-    "output_schema": {"type": "object", "properties": {"cogs": {"type": "number"}}},
-    "allowed_agents": ["product_development_agent", "pricing_agent", "supervisor"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "unit_cost": {
+          "type": "number"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "cogs": {
+          "type": "number"
+        }
+      }
+    },
+    "allowed_agents": [
+      "product_development_agent",
+      "pricing_agent",
+      "supervisor"
+    ],
     "cost_estimate_usd": 0.0,
-    "mode": "mock",
-    "tags": ["cogs", "pricing"]
+    "mode": "live",
+    "tags": [
+      "cogs",
+      "pricing"
+    ]
   },
   {
     "tool_id": "alibaba_supplier_search",
@@ -101,11 +302,30 @@
     "category": "product",
     "provider": "alibaba",
     "auth_required": false,
-    "input_schema": {"type": "object", "properties": {"keyword": {"type": "string"}}},
-    "output_schema": {"type": "object", "properties": {"suppliers": {"type": "array"}}},
-    "allowed_agents": ["product_development_agent"],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "suppliers": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "product_development_agent"
+    ],
     "cost_estimate_usd": 0.005,
     "mode": "mock",
-    "tags": ["product", "supplier"]
+    "tags": [
+      "product",
+      "supplier"
+    ]
   }
 ]

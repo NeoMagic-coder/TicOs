@@ -1,448 +1,595 @@
+// @ts-nocheck
+// ============================================================
+// AGENT.OS — Supervisor (Chat) page
+// Streaming execution view: prompt → plan → tool calls → answer
+// ============================================================
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Icon, StatusDot, AgentAvatar } from '@/components/AOS/widgets';
+import { AGENT_BY_ID, AGENTS } from '@/data/aos/mockData';
 import { useStore } from '@/stores/useStore';
-import { Send, Bot, User, ChevronDown, ChevronRight, Zap, Bug, Radio, Terminal } from 'lucide-react';
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChatMessageBody } from '@/components/ChatMessageBody';
-import { SlashCommandMenu } from '@/components/SlashCommandMenu';
-import { SLASH_COMMANDS } from '@/data/slashCommands';
-import type { SlashCommand } from '@/data/slashCommands';
+import { storeActions } from '@/lib/aos/adapter';
 
-/** Parse pipe-separated commands: "A | B" → ["A", "B"] */
-function parsePipe(raw: string): string[] {
-  return raw.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean);
-}
+// The previous version of this file shipped a 35-line pre-scripted SAMPLE
+// exchange ("Trendyol Mayıs ayında büyüt" with confident fake metrics like
+// "₺28.1k → ₺36.0k") that was never referenced after onboarding completed.
+// It has been removed so a curious reader can't mistake it for live state.
 
-/** True if input starts with "/" and looks like a slash-command prefix. */
-function isSlashPrefix(val: string): boolean {
-  return val.startsWith('/') && !val.includes('\n');
-}
+const GEMINI_MODEL = (import.meta.env.VITE_GEMINI_MODEL as string | undefined) || 'gemini-2.5-flash';
 
-export function ChatPage() {
-  const {
-    chatMessages, sendUserMessage, sendUserMessageStream,
-    debugMode, toggleDebugMode, agents, isThinking, onboardedProduct,
-    chatProgress, commandHistory, pushCommandHistory,
-  } = useStore();
+const TimelineStep = ({ step }) => {
+  const agent = AGENT_BY_ID[step.agent] || { name: 'critic', glyph: 'CR', accent: '#9B7BFF', role: 'Critic' };
+  if (step.kind === 'plan') {
+    const { primary, supporting, nodes } = step.meta;
+    const hasMeta = (primary && primary !== '—') || (supporting && supporting !== '—') || (nodes && nodes !== '—');
+    return (
+      <div style={{ display: 'flex', gap: 10, padding: '8px 0' }}>
+        <AgentAvatar agent={agent} size={22} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, fontWeight: 500 }}>
+            <span style={{ color: 'var(--fg-1)' }}>{agent.name}</span>
+            <span style={{ color: 'var(--fg-3)', marginLeft: 6 }} className="mono">— {step.label}</span>
+          </div>
+          {hasMeta ? (
+            <div className="mono" style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 4 }}>
+              {primary && primary !== '—' ? <>primary=<span style={{ color: 'var(--fg-2)' }}>{primary}</span></> : null}
+              {supporting && supporting !== '—' ? <> · supporting=[{supporting}]</> : null}
+              {nodes && nodes !== '—' ? <> · nodes={nodes}</> : null}
+            </div>
+          ) : (
+            <div className="mono" style={{ fontSize: 11, color: 'var(--fg-4)', marginTop: 4, fontStyle: 'italic' }}>
+              plan henüz oluşmadı
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (step.kind === 'agent_run') {
+    return (
+      <div style={{ display: 'flex', gap: 10, padding: '8px 0', alignItems: 'flex-start' }}>
+        <AgentAvatar agent={agent} size={22} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12 }}>
+            <span style={{ color: agent.accent, fontWeight: 500 }}>{agent.name}</span>
+            <span className="chip chip--amber" style={{ marginLeft: 8 }}>çalışıyor</span>
+          </div>
+          <div className="mono" style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 4 }}>{step.label}<span className="caret" /></div>
+        </div>
+      </div>
+    );
+  }
+  if (step.kind === 'tool') {
+    return (
+      <div style={{ display: 'flex', gap: 10, padding: '4px 0 4px 32px', alignItems: 'center' }}>
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: 11,
+          color: 'var(--fg-3)', display: 'inline-flex', alignItems: 'center', gap: 6,
+        }}>
+          <Icon name="tools" size={11} color="var(--fg-3)" />
+          <span style={{ color: 'var(--cyan)' }}>{step.tool}</span>
+          {typeof step.dur === 'number' && step.dur > 0 && (
+            <>
+              <span style={{ color: 'var(--fg-4)' }}>·</span>
+              <span className="tnum">{step.dur}ms</span>
+            </>
+          )}
+          <Icon name="check" size={11} color="var(--acid)" />
+        </span>
+      </div>
+    );
+  }
+  if (step.kind === 'agent_done') {
+    const hasDur = typeof step.dur === 'number' && step.dur > 0;
+    return (
+      <div style={{ display: 'flex', gap: 10, padding: '8px 0', alignItems: 'flex-start' }}>
+        <AgentAvatar agent={agent} size={22} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12 }}>
+            <span style={{ color: agent.accent, fontWeight: 500 }}>{agent.name}</span>
+            <span className="chip chip--acid" style={{ marginLeft: 8 }}>
+              tamamlandı{hasDur ? ` · ${(step.dur/1000).toFixed(1)}s` : ''}
+            </span>
+          </div>
+          {step.summary && (
+            <div style={{
+              fontSize: 12, color: 'var(--fg-2)', marginTop: 6,
+              padding: '8px 10px',
+              background: 'var(--bg-inset)',
+              border: '1px solid var(--border-faint)',
+              borderLeft: `2px solid ${agent.accent}`,
+              borderRadius: 3,
+              lineHeight: 1.5,
+            }}>{step.summary}</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (step.kind === 'critic') {
+    const hasScore = typeof step.score === 'number';
+    const color = hasScore ? (step.score >= 0.65 ? 'var(--acid)' : 'var(--amber)') : 'var(--fg-3)';
+    return (
+      <div style={{ display: 'flex', gap: 10, padding: '8px 0' }}>
+        <span style={{
+          width: 22, height: 22, borderRadius: 3,
+          background: 'rgba(155,123,255,0.15)', color: 'var(--violet)',
+          border: '1px solid rgba(155,123,255,0.3)',
+          display: 'grid', placeItems: 'center',
+          fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600,
+        }}>CR</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12 }}>
+            <span style={{ color: 'var(--violet)', fontWeight: 500 }}>Critic</span>
+            <span className="mono" style={{ marginLeft: 6, color: 'var(--fg-3)' }}>
+              {step.target_agent ? `${step.target_agent} →` : 'çıktı kalite skoru'}
+            </span>
+            {hasScore && (
+              <span className="mono tnum" style={{ marginLeft: 8, color }}>
+                {step.score.toFixed(2)}
+              </span>
+            )}
+          </div>
+          {step.reason && (
+            <div className="mono" style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 4 }}>{step.reason}</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (step.kind === 'merge') {
+    return (
+      <div style={{ display: 'flex', gap: 10, padding: '8px 0' }}>
+        <AgentAvatar agent={agent} size={22} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12 }}>
+            <span style={{ color: 'var(--violet)', fontWeight: 500 }}>Supervisor</span>
+            <span className="mono" style={{ marginLeft: 6, color: 'var(--fg-3)' }}>3 ajan çıktısı birleştiriliyor (TR özet)…<span className="caret" /></span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
 
+// ----- Markdown-ish render for final answer -----
+const renderFinal = (text) => {
+  const lines = text.split('\n');
+  return lines.map((line, i) => {
+    if (line.startsWith('**') && line.endsWith('**')) {
+      return <div key={i} style={{ fontWeight: 600, color: 'var(--fg-1)', marginTop: 12, marginBottom: 4, fontSize: 13 }}>{line.replace(/\*\*/g, '')}</div>;
+    }
+    if (line.startsWith('- ')) {
+      return <div key={i} style={{ display: 'flex', gap: 8, padding: '2px 0', fontSize: 13, color: 'var(--fg-2)' }}>
+        <span style={{ color: 'var(--acid)' }}>·</span>
+        <span dangerouslySetInnerHTML={{ __html: line.slice(2).replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--fg-1)">$1</strong>') }} />
+      </div>;
+    }
+    if (/^\d+\./.test(line)) {
+      const [num, ...rest] = line.split('. ');
+      return <div key={i} style={{ display: 'flex', gap: 8, padding: '4px 0', fontSize: 13, color: 'var(--fg-2)' }}>
+        <span className="mono" style={{ color: 'var(--acid)', minWidth: 16 }}>{num}.</span>
+        <span dangerouslySetInnerHTML={{ __html: rest.join('. ').replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--fg-1)">$1</strong>') }} />
+      </div>;
+    }
+    if (!line.trim()) return <div key={i} style={{ height: 6 }} />;
+    return <div key={i} style={{ fontSize: 13, color: 'var(--fg-2)', padding: '2px 0' }}>{line}</div>;
+  });
+};
+
+// ============================================================
+// Page
+// ============================================================
+const SupervisorPage = () => {
+  const chatMessages = useStore((s: any) => s.chatMessages);
+  const chatProgress = useStore((s: any) => s.chatProgress);
+  const isThinking = useStore((s: any) => s.isThinking);
+  const llmDegraded = useStore((s: any) => s.llmDegraded);
+  const llmDegradedReason = useStore((s: any) => s.llmDegradedReason);
+  const setCurrentPage = useStore((s: any) => s.setCurrentPage);
+  const addAuditLog = useStore((s: any) => s.addAuditLog);
   const [input, setInput] = useState('');
-  const [expandedThinking, setExpandedThinking] = useState<string | null>(null);
-  const [liveMode, setLiveMode] = useState(false);
-  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
-  const [slashMenuIndex, setSlashMenuIndex] = useState(0);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const [toolPanelOpen, setToolPanelOpen] = useState(true);
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, isThinking]);
-
-  // Filtered slash commands based on current input
-  const filteredCommands: SlashCommand[] = isSlashPrefix(input)
-    ? SLASH_COMMANDS.filter((c) => c.id.startsWith(input.split(' ')[0]))
-    : [];
-
-  useEffect(() => {
-    setSlashMenuOpen(filteredCommands.length > 0);
-    setSlashMenuIndex(0);
-  }, [filteredCommands.length]);
-
-  const applySlashCommand = useCallback((cmd: SlashCommand) => {
-    setInput(cmd.id + ' ');
-    setSlashMenuOpen(false);
-    inputRef.current?.focus();
-  }, []);
-
-  const dispatchMessage = useCallback((raw: string) => {
-    const trimmed = raw.trim();
-    if (!trimmed || isThinking) return;
-    pushCommandHistory(trimmed);
-    setHistoryIndex(-1);
-
-    // Handle built-in slash commands locally
-    if (trimmed === '/clear') {
-      useStore.getState().addChatMessage({ role: 'system', content: 'Sohbet temizlendi.' });
-      setInput('');
-      return;
-    }
-    if (trimmed === '/debug') {
-      toggleDebugMode();
-      setInput('');
-      return;
-    }
-    if (trimmed === '/live') {
-      setLiveMode((v) => !v);
-      setInput('');
-      return;
-    }
-
-    // Handle pipe chains: send sequentially
-    const segments = parsePipe(trimmed);
-    if (segments.length > 1) {
-      const send = liveMode ? sendUserMessageStream : sendUserMessage;
-      // Send first segment, then chain via a single combined message
-      const combined = segments.join(' → ');
-      send(combined);
-    } else {
-      if (liveMode) sendUserMessageStream(trimmed);
-      else sendUserMessage(trimmed);
-    }
-    setInput('');
-    inputRef.current?.focus();
-  }, [isThinking, liveMode, sendUserMessage, sendUserMessageStream, toggleDebugMode, pushCommandHistory]);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Slash menu navigation
-    if (slashMenuOpen) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSlashMenuIndex((i) => Math.min(i + 1, filteredCommands.length - 1));
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSlashMenuIndex((i) => Math.max(i - 1, 0));
-        return;
-      }
-      if (e.key === 'Tab' || (e.key === 'Enter' && filteredCommands.length > 0)) {
-        e.preventDefault();
-        applySlashCommand(filteredCommands[slashMenuIndex]);
-        return;
-      }
-      if (e.key === 'Escape') {
-        setSlashMenuOpen(false);
-        return;
-      }
-    }
-
-    // History navigation (↑ / ↓) — only when not in slash menu
-    if (e.key === 'ArrowUp' && !e.shiftKey && input === '') {
-      e.preventDefault();
-      const next = Math.min(historyIndex + 1, commandHistory.length - 1);
-      setHistoryIndex(next);
-      setInput(commandHistory[next] ?? '');
-      return;
-    }
-    if (e.key === 'ArrowDown' && !e.shiftKey && historyIndex >= 0) {
-      e.preventDefault();
-      const prev = historyIndex - 1;
-      setHistoryIndex(prev);
-      setInput(prev < 0 ? '' : commandHistory[prev] ?? '');
-      return;
-    }
-
-    // Shift+Enter → newline (natural multi-line)
-    if (e.key === 'Enter' && e.shiftKey) return;
-
-    // Enter → send
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      dispatchMessage(input);
-    }
+  const [showNewTask, setShowNewTask] = useState(false);
+  const [newTaskDraft, setNewTaskDraft] = useState({ title: '', description: '' });
+  const scrollRef = useRef(null);
+  const addTask = useStore((s: any) => s.addTask);
+  const submitNewTask = () => {
+    if (!newTaskDraft.title.trim()) return;
+    addTask({ title: newTaskDraft.title, description: newTaskDraft.description, priority: 'medium' });
+    setShowNewTask(false);
+    setNewTaskDraft({ title: '', description: '' });
+  };
+  const recordFeedback = (taskId: string | undefined, quality: 'good' | 'bad') => {
+    addAuditLog({
+      action: `chat.feedback.${quality}`,
+      actor_type: 'user',
+      actor_id: 'user_1',
+      actor_name: 'Kullanıcı',
+      details: `Yanıt ${quality === 'good' ? 'olumlu' : 'olumsuz'} değerlendirildi (${taskId ?? 'no-task'})`,
+    });
+    import('@/components/AOS/Toast').then((m) =>
+      m.pushToast({ kind: quality === 'good' ? 'success' : 'info', title: 'Geri bildirim kaydedildi', body: quality === 'good' ? 'Critic skorunu güçlendirir.' : 'İyileştirme sırasına eklendi.' }),
+    );
   };
 
-  // Auto-resize textarea
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, [input]);
+  const progressSteps = useMemo(() => {
+    if (!chatProgress || !chatProgress.length) return [];
+    const steps: any[] = [];
+    for (const ev of chatProgress) {
+      if (ev.event === 'task_started') {
+        steps.push({ kind: 'agent_run', agent: 'supervisor', label: 'Hermes planlamaya başladı', t: 0 });
+      } else if (ev.event === 'plan_ready') {
+        const primary = (ev as any).primary || ev.agent_id || '—';
+        const supporting = Array.isArray((ev as any).supporting) ? (ev as any).supporting.join(', ') : ((ev as any).supporting || '—');
+        const nodeCount = (ev as any).node_count;
+        steps.push({
+          kind: 'plan',
+          agent: 'supervisor',
+          label: 'TaskGraph hazır',
+          meta: {
+            primary,
+            supporting,
+            nodes: typeof nodeCount === 'number' ? String(nodeCount) : '—',
+          },
+          t: 0,
+        });
+      } else if (ev.event === 'agent_started') {
+        steps.push({ kind: 'agent_run', agent: ev.agent_id, label: ev.label || (ev.agent_id + ' çalışıyor'), t: 0 });
+      } else if (ev.event === 'tool_called') {
+        steps.push({ kind: 'tool', agent: ev.agent_id, tool: ev.tool_id, dur: 0, t: 0 });
+      } else if (ev.event === 'agent_completed') {
+        steps.push({ kind: 'agent_done', agent: ev.agent_id, summary: ev.label, dur: 0, t: 0 });
+      } else if (ev.event === 'critic_scored') {
+        steps.push({
+          kind: 'critic',
+          agent: 'critic',
+          target_agent: ev.agent_id,
+          score: typeof ev.score === 'number' ? ev.score : null,
+          reason: ev.reason || null,
+          t: 0,
+        });
+      } else if (ev.event === 'merging') {
+        steps.push({ kind: 'merge', agent: 'supervisor', t: 0 });
+      }
+    }
+    return steps;
+  }, [chatProgress]);
 
-  const productName = onboardedProduct?.product_name;
-  const quickActions = productName
-    ? [
-        `${productName} için bu hafta satışları nasıl artırabilirim?`,
-        `${productName} stok ve fiyat anomalilerini göster`,
-        `${productName} için müşteri mesajlarına yanıt taslakları hazırla`,
-        `${productName} listinglerimi ${onboardedProduct?.channels?.[0] ?? 'pazaryeri'} için optimize et`,
-        `${productName} için günlük performans raporu oluştur`,
-      ]
-    : [
-        'Bu hafta satışları nasıl artırabilirim?',
-        'Stok bitecek ürünleri göster',
-        'Müşteri mesajlarına cevap hazırla',
-        'Trendyol listinglerimi optimize et',
-        'Günlük performans raporu oluştur',
-      ];
-
-  // Tool output events — includes both direct tool calls and nested sub-agent events
-  const toolEvents = chatProgress.filter((p) =>
-    p.event === 'tool_called' ||
-    p.event?.startsWith('subagent.')
+  const tasks = useStore((s: any) => s.tasks);
+  const taskById = useMemo(
+    () => Object.fromEntries(tasks.map((t: any) => [t.task_id, t])),
+    [tasks],
   );
+
+  // Group chat messages into user/assistant exchange pairs for the timeline view.
+  const exchanges = useMemo(() => {
+    const out: any[] = [];
+    let current: any = null;
+    for (const m of chatMessages) {
+      if (m.role === 'user') {
+        if (current) out.push(current);
+        current = { id: m.id, user: m.content, steps: [], final: null, complete: false, confidence: null };
+      } else if (m.role === 'assistant') {
+        if (!current) current = { id: m.id, user: '(continuation)', steps: [], final: null, complete: false, confidence: null };
+        current.final = m.content;
+        current.complete = true;
+        current.taskId = m.task_id;
+        // Pull confidence from the linked Task, if any.
+        if (m.task_id && taskById[m.task_id]?.confidence != null) {
+          current.confidence = taskById[m.task_id].confidence;
+        }
+        if (m.tools_used?.length) {
+          current.steps = m.tools_used.map((t: string, i: number) => ({ kind: 'tool', agent: m.agent_id || 'supervisor', tool: t, dur: 0, t: i * 100 }));
+        }
+      } else if (m.role === 'system') {
+        if (current) {
+          current.steps = current.steps || [];
+          current.steps.push({ kind: 'agent_run', agent: m.agent_id || 'supervisor', label: m.content, t: 0 });
+        }
+      }
+    }
+    // Last user-only exchange (no assistant reply yet) gets live progress steps.
+    if (current && !current.final && isThinking && progressSteps.length) {
+      current.steps = progressSteps;
+    }
+    if (current) out.push(current);
+    return out;
+  }, [chatMessages, progressSteps, isThinking, taskById]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [exchanges]);
+
+  const send = (text: string) => {
+    if (!text.trim()) return;
+    setInput('');
+    storeActions.sendMessageStream(text).catch(() => storeActions.sendMessage(text));
+  };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800 bg-gray-900/50 backdrop-blur">
-        <div className="flex items-center justify-between max-w-4xl mx-auto">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600/20 flex items-center justify-center">
-              <Bot size={20} className="text-indigo-400" />
+    <div className="page" style={{ paddingBottom: 0, height: '100%', display: 'flex', flexDirection: 'column', maxWidth: 'none' }}>
+      <div className="page__breadcrumb mono">HOME <span>›</span> SUPERVISOR</div>
+      <div className="page__header" style={{ marginBottom: 12 }}>
+        <div>
+          <h1 className="page__title">
+            Supervisor Chat
+            <span className="page__title-tag">HERMES · SSE</span>
+            {llmDegraded && (
+              <span
+                className="chip chip--amber"
+                title={
+                  llmDegradedReason === 'gemini_quota_exhausted'
+                    ? 'Gemini kotası tükendi — yanıtlar MockProvider fallback ile üretiliyor.'
+                    : 'GEMINI_API_KEY yapılandırılmadı — yanıtlar MockProvider tarafından üretiliyor.'
+                }
+                style={{ marginLeft: 8 }}
+              >
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--amber)' }} />
+                MOCK LLM
+              </span>
+            )}
+            {isThinking ? (
+              <span className="chip chip--amber">
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--amber)', boxShadow: '0 0 6px var(--amber)' }} />
+                ÇALIŞIYOR
+              </span>
+            ) : chatMessages?.length ? (
+              <span className="chip chip--acid">
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--acid)', boxShadow: '0 0 6px var(--acid)' }} />
+                HAZIR
+              </span>
+            ) : (
+              <span className="chip" style={{ background: 'transparent', color: 'var(--fg-3)' }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--fg-4)' }} />
+                BEKLEMEDE
+              </span>
+            )}
+          </h1>
+          <p className="page__sub">
+            Doğal dilde komut ver — Hermes uygun ajanlara dağıtır, OpenClaw araçları çağırır, Critic puanlar.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn--ghost" onClick={() => setShowNewTask(true)}>
+            <Icon name="refresh" size={12} /> Yeni Görev
+          </button>
+          <button className="btn" onClick={() => setCurrentPage('graph')}>
+            <Icon name="graph" size={12} /> Grafik Görünüm
+          </button>
+        </div>
+      </div>
+
+      {/* Conversation area */}
+      <div ref={scrollRef} style={{
+        flex: 1, overflowY: 'auto',
+        background: 'var(--bg-1)',
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        padding: 20,
+        marginBottom: 12,
+      }}>
+        {exchanges.length === 0 && !isThinking && (
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', minHeight: 280, gap: 16, padding: '24px 12px',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: 8,
+              background: 'rgba(155,123,255,0.12)', border: '1px solid rgba(155,123,255,0.35)',
+              display: 'grid', placeItems: 'center',
+            }}>
+              <Icon name="sparkles" size={26} color="var(--violet)" />
             </div>
             <div>
-              <h1 className="text-sm font-bold text-white">Supervisor Chat</h1>
-              <p className="text-[11px] text-gray-500">
-                Doğal dilde komut verin, sorgulayın, onaylayın
-                {onboardedProduct && (
-                  <span className="text-gray-400"> · Bağlam: <span className="text-yellow-300 font-medium">{onboardedProduct.product_name}</span></span>
-                )}
-              </p>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--fg-1)', marginBottom: 4 }}>
+                Supervisor'a ne sormak istiyorsun?
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--fg-3)', maxWidth: 480 }}>
+                Doğal dilde komut yaz — Hermes 22 ajan ve 77 araç arasında plan kurar, sonucu Türkçe özetler.
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 640 }}>
+              {[
+                'Bugün için günün planını çıkar',
+                'Bekleyen tüm onayları onayla',
+                'Marka kimliğini yeniden üret',
+                'En kritik 3 görev hangisi?',
+                'Anomalileri göster',
+                'Tüm entegrasyonları senkronize et',
+              ].map((s) => (
+                <button
+                  key={s}
+                  className="btn btn--sm btn--ghost"
+                  onClick={() => send(s)}
+                  style={{ fontSize: 11 }}
+                >
+                  {s}
+                </button>
+              ))}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setLiveMode((v) => !v)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                liveMode ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-gray-800 text-gray-400 hover:text-white'
-              }`}
-              title="SSE ile canlı ajan/tool progress'i göster"
-            >
-              <Radio size={14} /> {liveMode ? 'Canlı Açık' : 'Canlı Kapalı'}
-            </button>
-            <button
-              onClick={toggleDebugMode}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                debugMode ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-gray-800 text-gray-400 hover:text-white'
-              }`}
-            >
-              <Bug size={14} /> {debugMode ? 'Debug Açık' : 'Debug Kapalı'}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="max-w-4xl mx-auto space-y-4">
-          {chatMessages.length === 0 && (
-            <div className="text-center py-12">
-              <div className="text-5xl mb-4">👔</div>
-              <h2 className="text-lg font-bold text-white mb-2">Supervisor'a hoş geldiniz</h2>
-              <p className="text-sm text-gray-400 mb-2">Doğal dilde komut vererek e-ticaret operasyonlarınızı yönetin</p>
-              <p className="text-[11px] text-gray-600 mb-6 font-mono">
-                <span className="text-indigo-400">/</span> yazarak komut otomatik tamamlama · ↑↓ geçmiş · Shift+Enter yeni satır · <span className="text-emerald-400">A | B</span> zincir
-              </p>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {quickActions.map((action) => (
-                  <button
-                    key={action}
-                    onClick={() => sendUserMessage(action)}
-                    className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-xl text-xs text-gray-300 hover:text-white hover:border-indigo-500/50 transition-all"
-                  >
-                    {action}
-                  </button>
-                ))}
-              </div>
+        )}
+        {exchanges.map(ex => (
+          <div key={ex.id} style={{ marginBottom: 32 }}>
+            {/* user message */}
+            <div style={{
+              display: 'flex', gap: 10, justifyContent: 'flex-end', marginBottom: 14,
+            }}>
+              <div style={{
+                maxWidth: '70%',
+                background: 'var(--bg-2)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                padding: '10px 14px',
+                fontSize: 13,
+                color: 'var(--fg-1)',
+                lineHeight: 1.5,
+              }}>{ex.user}</div>
+              <span style={{
+                width: 28, height: 28, borderRadius: 4,
+                background: 'var(--bg-3)', border: '1px solid var(--border)',
+                display: 'grid', placeItems: 'center', color: 'var(--fg-3)', flex: 'none',
+              }}><Icon name="user" size={14} /></span>
             </div>
-          )}
 
-          {chatMessages.map((msg) => {
-            const isUser = msg.role === 'user';
-            const isSystem = msg.role === 'system';
-            const agent = msg.agent_id ? agents.find((a) => a.agent_id === msg.agent_id) : null;
-
-            if (isSystem) {
-              return (
-                <div key={msg.id} className="flex justify-center">
-                  <span className="text-[10px] text-gray-500 bg-gray-800 px-3 py-1 rounded-full">{msg.content}</span>
+            {/* execution timeline */}
+            {ex.steps.length > 0 && (
+              <div style={{
+                position: 'relative', marginLeft: 6,
+                paddingLeft: 20, borderLeft: '1px dashed var(--border)',
+              }}>
+                <div style={{
+                  position: 'absolute', left: -8, top: 0,
+                  width: 14, height: 14, borderRadius: '50%',
+                  background: 'var(--bg-1)', border: '1px solid var(--violet)',
+                  display: 'grid', placeItems: 'center',
+                }}>
+                  <Icon name="sparkles" size={8} color="var(--violet)" />
                 </div>
-              );
-            }
-
-            return (
-              <div key={msg.id} className={`flex gap-3 ${isUser ? 'justify-end' : ''}`}>
-                {!isUser && (
-                  <div className="w-8 h-8 rounded-lg bg-indigo-600/20 flex items-center justify-center shrink-0 mt-1">
-                    {agent ? <span className="text-sm">{agent.icon}</span> : <Bot size={16} className="text-indigo-400" />}
-                  </div>
-                )}
-
-                <div className={`max-w-[75%] ${isUser ? 'order-first' : ''}`}>
-                  <div className={`rounded-2xl px-4 py-3 ${
-                    isUser
-                      ? 'bg-indigo-600 text-white rounded-tr-sm'
-                      : 'bg-gray-800 text-gray-200 rounded-tl-sm border border-gray-700'
-                  }`}>
-                    {!isUser && agent && (
-                      <p className="text-[10px] font-medium text-indigo-400 mb-1">{agent.name}</p>
-                    )}
-                    <ChatMessageBody content={msg.content} />
-                  </div>
-
-                  {/* Debug: thinking */}
-                  {debugMode && msg.thinking && (
-                    <div className="mt-1">
-                      <button
-                        onClick={() => setExpandedThinking(expandedThinking === msg.id ? null : msg.id)}
-                        className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-300"
-                      >
-                        {expandedThinking === msg.id ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                        Düşünce süreci
-                      </button>
-                      {expandedThinking === msg.id && (
-                        <div className="mt-1 p-2 rounded-lg bg-gray-900 border border-gray-700 text-[11px] text-gray-400 italic">
-                          {msg.thinking}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Tools used */}
-                  {msg.tools_used && msg.tools_used.length > 0 && (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {msg.tools_used.map((tool) => (
-                        <span key={tool} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] bg-gray-800 text-gray-400 border border-gray-700">
-                          <Zap size={8} /> {tool}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  <p className="text-[10px] text-gray-600 mt-1 px-1">
-                    {new Date(msg.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-                  </p>
+                <div className="label-eyebrow" style={{ marginBottom: 6, color: 'var(--violet)' }}>
+                  HERMES YÜRÜTME · {ex.steps.length} olay
                 </div>
-
-                {isUser && (
-                  <div className="w-8 h-8 rounded-lg bg-gray-700 flex items-center justify-center shrink-0 mt-1">
-                    <User size={16} className="text-gray-300" />
-                  </div>
-                )}
+                {ex.steps.map((s, i) => <TimelineStep key={i} step={s} />)}
               </div>
-            );
-          })}
-
-          {isThinking && (
-            <div className="flex gap-3 max-w-3xl">
-              <div className="w-8 h-8 rounded-full bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center shrink-0">
-                <Bot size={14} className="text-indigo-400" />
-              </div>
-              <div className="bg-gray-800/60 border border-gray-700 rounded-2xl rounded-tl-sm px-4 py-3 flex-1">
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <span className="inline-flex gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" style={{ animationDelay: '150ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" style={{ animationDelay: '300ms' }} />
-                  </span>
-                  <span>CEO Agent düşünüyor…</span>
-                </div>
-                {chatProgress.length > 0 && (
-                  <div className="mt-2 space-y-1" data-testid="chat-progress">
-                    {chatProgress.slice(-6).map((p) => (
-                      <div key={p.ts} className="text-[11px] text-gray-400 flex items-center gap-1.5">
-                        <span className="w-1 h-1 rounded-full bg-emerald-400" /> {p.label}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-      </div>
-
-      {/* Tool Output Panel — collapsible terminal-style stream */}
-      {toolEvents.length > 0 && (
-        <div className="shrink-0 border-t border-gray-800 bg-gray-950">
-          <button
-            onClick={() => setToolPanelOpen((v) => !v)}
-            className="w-full flex items-center gap-2 px-6 py-2 text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
-          >
-            <Terminal size={11} />
-            <span>Araç çıktısı — {toolEvents.length} çağrı</span>
-            <ChevronDown size={10} className={`ml-auto transition-transform ${toolPanelOpen ? '' : '-rotate-90'}`} />
-          </button>
-          {toolPanelOpen && (
-            <div className="px-6 pb-3 max-h-32 overflow-y-auto font-mono">
-              {toolEvents.map((ev) => {
-                const isSubagent = ev.event?.startsWith('subagent.');
-                const subEvent = isSubagent ? ev.event?.replace('subagent.', '') : null;
-                const ts = new Date(ev.ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                if (isSubagent) return (
-                  <div key={ev.ts} className="text-[10px] leading-5 pl-3 border-l border-purple-800/60">
-                    <span className="text-gray-600">{ts}</span>
-                    {' '}<span className="text-purple-400">↪ alt-ajan</span>
-                    {' '}<span className="text-purple-300">{ev.agent_id ?? '?'}</span>
-                    {' '}<span className="text-gray-500">{subEvent}</span>
-                    {ev.tool_id ? <><span className="text-gray-600"> → </span><span className="text-purple-200">{ev.tool_id}</span></> : null}
-                    {(ev as Record<string, unknown>).summary ? <span className="text-gray-500 ml-1 italic">{String((ev as Record<string, unknown>).summary).slice(0, 80)}</span> : null}
-                  </div>
-                );
-                return (
-                  <div key={ev.ts} className="text-[10px] text-emerald-400 leading-5">
-                    <span className="text-gray-600">{ts}</span>
-                    {' '}<span className="text-indigo-400">{ev.agent_id ?? 'agent'}</span>
-                    {' → '}<span className="text-emerald-300">{ev.tool_id ?? '?'}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Quick Actions */}
-      {chatMessages.length > 0 && (
-        <div className="shrink-0 px-6 pb-2">
-          <div className="max-w-4xl mx-auto flex flex-wrap gap-1.5">
-            {quickActions.slice(0, 3).map((action) => (
-              <button
-                key={action}
-                onClick={() => sendUserMessage(action)}
-                className="px-2.5 py-1 bg-gray-800 border border-gray-700 rounded-lg text-[10px] text-gray-400 hover:text-white hover:border-indigo-500/50 transition-all"
-              >
-                {action}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Terminal Input */}
-      <div className="shrink-0 px-6 pb-6 pt-2">
-        <div className="max-w-4xl mx-auto relative flex gap-3 items-end">
-          <div className="flex-1 relative">
-            {slashMenuOpen && (
-              <SlashCommandMenu
-                commands={filteredCommands}
-                activeIndex={slashMenuIndex}
-                onSelect={applySlashCommand}
-              />
             )}
-            <div className="flex items-end gap-2 px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl focus-within:border-indigo-500 transition-colors">
-              <span className="text-gray-600 font-mono text-sm shrink-0 pb-0.5">›</span>
-              <textarea
-                ref={inputRef}
-                rows={1}
-                value={input}
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  setHistoryIndex(-1);
-                }}
-                onKeyDown={handleKeyDown}
-                disabled={isThinking}
-                placeholder={isThinking ? 'CEO Agent yanıt veriyor…' : "Komut yazın… (/ ile otomatik tamamlama · ↑↓ geçmiş · Shift+Enter yeni satır · A | B zincir)"}
-                className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none resize-none disabled:opacity-60 leading-5"
-                style={{ minHeight: '20px', maxHeight: '160px' }}
-              />
-            </div>
-            <p className="text-[9px] text-gray-700 mt-1 pl-1 font-mono">
-              Enter: gönder · Shift+Enter: yeni satır · ↑↓: geçmiş · /: komutlar · A | B: zincir
-            </p>
+
+            {/* final answer */}
+            {ex.final && (
+              <div style={{
+                marginTop: 16,
+                background: 'var(--bg-0)',
+                border: '1px solid var(--border)',
+                borderLeft: '2px solid var(--acid)',
+                borderRadius: 6,
+                padding: '14px 18px',
+              }}>
+                <div className="label-eyebrow" style={{ marginBottom: 8, color: 'var(--acid)' }}>
+                  YÖNETICI ÖZETI{ex.confidence != null ? ` · CONFIDENCE ${ex.confidence.toFixed(2)}` : ''}
+                </div>
+                <div>{typeof ex.final === 'string' ? renderFinal(ex.final) : ex.final}</div>
+                {ex.complete && (
+                  <div style={{
+                    marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border-faint)',
+                    display: 'flex', alignItems: 'center', gap: 10, fontSize: 11,
+                  }} className="mono">
+                    <span style={{ color: 'var(--fg-3)' }}>
+                      {ex.steps?.filter((s: any) => s.kind === 'tool').length || 0} tool · {ex.steps?.length || 0} olay
+                    </span>
+                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn btn--sm btn--ghost"
+                        onClick={() => recordFeedback(ex.taskId, 'good')}
+                      >
+                        <Icon name="check" size={10} /> İyi
+                      </button>
+                      <button
+                        className="btn btn--sm btn--ghost"
+                        onClick={() => recordFeedback(ex.taskId, 'bad')}
+                      >
+                        <Icon name="x" size={10} /> Hata
+                      </button>
+                      <button
+                        className="btn btn--sm"
+                        onClick={() => setCurrentPage('graph')}
+                      >
+                        <Icon name="graph" size={10} /> DAG Aç
+                      </button>
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <button
-            onClick={() => dispatchMessage(input)}
-            disabled={!input.trim() || isThinking}
-            className="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-sm font-medium transition-colors flex items-center gap-2 mb-5"
-          >
-            <Send size={16} /> Gönder
+        ))}
+      </div>
+
+      {/* Input */}
+      <div style={{
+        background: 'var(--bg-1)',
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        padding: 10,
+        marginBottom: 12,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <span className="label-eyebrow" style={{ color: 'var(--violet)' }}>
+            <span style={{ color: 'var(--acid)' }}>›</span> SUPERVISOR
+          </span>
+          <span className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>
+            mode: <span style={{ color: 'var(--acid)' }}>autonomous</span> · model: <span style={{ color: 'var(--fg-2)' }}>{GEMINI_MODEL}</span>
+          </span>
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            {['/plan', '/price', '/brand', '/reviews', '/sync'].map(c => (
+              <button
+                key={c}
+                className="btn btn--sm btn--ghost"
+                title={`${c} komutunu hemen çalıştır`}
+                onClick={() => send(c)}
+              >{c}</button>
+            ))}
+          </span>
+        </div>
+        <textarea
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
+          placeholder="Supervisor'a mesaj — Görev yaz veya / ile slash komut çalıştır… (Enter gönder · Shift+Enter yeni satır)"
+          style={{
+            width: '100%', minHeight: 60,
+            background: 'transparent', border: 'none', outline: 'none',
+            resize: 'vertical', color: 'var(--fg-1)', fontSize: 13,
+            lineHeight: 1.5, fontFamily: 'var(--font-sans)',
+          }}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 8, borderTop: '1px solid var(--border-faint)' }}>
+          <span className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>
+            ⌘K komut paleti · ⌘↵ gönder
+          </span>
+          <span style={{ marginLeft: 'auto' }} />
+          <button className="btn btn--primary" onClick={() => send(input)}>
+            <Icon name="zap" size={12} /> Gönder
           </button>
         </div>
       </div>
+
+      {showNewTask && (
+        <div onClick={() => setShowNewTask(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 8, padding: 24, width: 480, maxWidth: '92vw' }}>
+            <h3 style={{ marginTop: 0, fontSize: 15 }}>Yeni Görev</h3>
+            <div style={{ display: 'grid', gap: 12, fontSize: 12 }}>
+              <label>
+                <div className="label-eyebrow" style={{ marginBottom: 4 }}>Başlık</div>
+                <input
+                  value={newTaskDraft.title}
+                  onChange={(e) => setNewTaskDraft({ ...newTaskDraft, title: e.target.value })}
+                  style={{ width: '100%', padding: '6px 8px', background: 'var(--bg-0)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--fg-1)' }}
+                />
+              </label>
+              <label>
+                <div className="label-eyebrow" style={{ marginBottom: 4 }}>Açıklama</div>
+                <textarea
+                  rows={4}
+                  value={newTaskDraft.description}
+                  onChange={(e) => setNewTaskDraft({ ...newTaskDraft, description: e.target.value })}
+                  style={{ width: '100%', padding: '6px 8px', background: 'var(--bg-0)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--fg-1)', resize: 'vertical' }}
+                />
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 18, justifyContent: 'flex-end' }}>
+              <button className="btn btn--ghost btn--sm" onClick={() => setShowNewTask(false)}>Vazgeç</button>
+              <button className="btn btn--primary btn--sm" onClick={submitNewTask} disabled={!newTaskDraft.title.trim()}>
+                Oluştur
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
+};
+
+
+
+
+export default SupervisorPage;

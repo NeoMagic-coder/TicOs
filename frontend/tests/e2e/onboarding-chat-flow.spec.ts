@@ -44,6 +44,12 @@ test('onboarding → chat → mocked backend response renders', async ({ page })
       body: JSON.stringify(STUB_RESPONSE),
     });
   });
+  // SSE stream — fail it so the store falls back to the buffered /api/v1/chat
+  // path stubbed above. Without this stub a live FastAPI on :8000 would answer
+  // SSE first and bypass our mock entirely.
+  await page.route('**/api/v1/chat/stream', (route) =>
+    route.fulfill({ status: 503, contentType: 'text/plain', body: 'stream disabled' }),
+  );
   // /health probe — return ok so any reachability check succeeds.
   await page.route('**/health', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }),
@@ -87,8 +93,9 @@ test('onboarding → chat → mocked backend response renders', async ({ page })
   await input.fill('Pazar araştırması yap ve rakipleri çıkar');
   await page.getByRole('button', { name: /Gönder/i }).click();
 
-  // --- User bubble appears ---
-  await expect(page.getByText('Pazar araştırması yap ve rakipleri çıkar')).toBeVisible();
+  // --- User bubble appears (input value + chat bubble both contain the text;
+  //     match the chat bubble specifically via .first()) ---
+  await expect(page.getByText('Pazar araştırması yap ve rakipleri çıkar').first()).toBeVisible();
 
   // --- Mocked assistant response renders (content + tool chips) ---
   await expect(
