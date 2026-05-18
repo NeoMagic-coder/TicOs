@@ -57,7 +57,42 @@ def init_db() -> None:
             log.warning("db.pgvector.unavailable", error=str(exc))
 
     Base.metadata.create_all(bind=engine)
+
+    # Lightweight schema evolution for SQLite dev DBs: ``create_all`` only
+    # creates *missing tables*, not new columns on existing ones. When we add
+    # a column to an ORM model, the existing app.db still has the old shape
+    # until we either drop it or ALTER it. We only do this for SQLite to keep
+    # things contained — production Postgres should use real migrations.
+    if engine.dialect.name == "sqlite":
+        _ensure_sqlite_columns()
+
     log.info("db.init", url=_url, tables=len(Base.metadata.tables))
+
+
+def _ensure_sqlite_columns() -> None:
+    """Add missing columns to existing SQLite tables (dev-only nicety).
+
+    Each entry is ``(table, column, ddl_type)``. ``ALTER TABLE ... ADD COLUMN``
+    is idempotent against ``PRAGMA table_info`` checks.
+    """
+    expected: list[tuple[str, str, str]] = [
+        ("tasks", "goal_id", "VARCHAR(64)"),
+    ]
+    with engine.begin() as conn:
+        for table, column, ddl in expected:
+            # Skip if table itself doesn't exist yet (create_all already ran,
+            # so a missing table means it's not a registered model).
+            exists = conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name=:t"),
+                {"t": table},
+            ).first()
+            if not exists:
+                continue
+            cols = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+            if column in cols:
+                continue
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+            log.info("db.sqlite.column_added", table=table, column=column)
 
 
 @contextmanager

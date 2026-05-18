@@ -14,7 +14,7 @@ from apps.api.core.openclaw.registry import get_registry
 async def test_execute_in_mock_mode():
     executor = OpenClawExecutor()
     result = await executor.execute(
-        tool_id="niche_scorer", agent_id="market_research_agent",
+        tool_id="competitor_profile_builder", agent_id="market_research_agent",
         payload={"niche": "yanmaz tencere"},
     )
     assert result.status == "success"
@@ -27,7 +27,7 @@ async def test_permission_denied():
     executor = OpenClawExecutor()
     with pytest.raises(PermissionDenied):
         await executor.execute(
-            tool_id="niche_scorer", agent_id="support_agent", payload={"niche": "x"},
+            tool_id="competitor_profile_builder", agent_id="support_agent", payload={"niche": "x"},
         )
 
 
@@ -45,11 +45,11 @@ async def test_audit_logging():
     executor = OpenClawExecutor()
     ctx = ExecutionContext(agent_id="market_research_agent", task_id="t_test")
     await executor.execute(
-        tool_id="niche_scorer", agent_id="market_research_agent",
+        tool_id="competitor_profile_builder", agent_id="market_research_agent",
         payload={"niche": "x"}, ctx=ctx,
     )
     assert len(ctx.audit) == 1
-    assert ctx.audit[0].tool_id == "niche_scorer"
+    assert ctx.audit[0].tool_id == "competitor_profile_builder"
     assert ctx.cost_so_far_usd > 0
 
 
@@ -58,7 +58,7 @@ async def test_concurrent_executions():
     executor = OpenClawExecutor()
     results = await asyncio.gather(*[
         executor.execute(
-            tool_id="niche_scorer", agent_id="market_research_agent",
+            tool_id="competitor_profile_builder", agent_id="market_research_agent",
             payload={"niche": f"n{i}"},
         ) for i in range(5)
     ])

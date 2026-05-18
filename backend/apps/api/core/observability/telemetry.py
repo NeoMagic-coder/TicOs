@@ -97,6 +97,11 @@ LLM_TOKENS = _counter(
     "LLM tokens used by provider/model.",
     ("provider", "model"),
 )
+CRITIC_SCORES = _counter(
+    "critic_scored_total",
+    "Critic scoring runs by mode (llm / heuristic_fallback) and verdict.",
+    ("mode", "verdict"),
+)
 
 TASK_DURATION = _histogram(
     "hermes_task_duration_seconds",

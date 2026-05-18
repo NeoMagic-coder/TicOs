@@ -1,262 +1,454 @@
+// @ts-nocheck
+import React, { useState, useEffect, useMemo } from 'react';
+import { Icon, AgentAvatar, Sparkline } from '@/components/AOS/widgets';
+import { AGENT_BY_ID } from '@/data/aos/mockData';
 import { useStore } from '@/stores/useStore';
-import { DollarSign, TrendingUp, Wallet, Target, Activity, Sparkles, Loader2, AlertCircle } from 'lucide-react';
-import { ChatCommandBar } from '@/components/ChatCommandBar';
 
-export function PricingPage() {
-  const product = useStore((s) => s.onboardedProduct);
-  const econ = useStore((s) => s.productEconomics);
-  const loading = useStore((s) => s.productEconomicsLoading);
-  const error = useStore((s) => s.productEconomicsError);
-  const regenerate = useStore((s) => s.regenerateProductEconomics);
+import { useAdaptedPricingSkus } from '@/lib/aos/adapter';
+import { pushToast } from '@/components/AOS/Toast';
+import { BASE_URL } from '@/lib/api';
 
+const PricingPage = () => {
+  const SKUS_DATA = useAdaptedPricingSkus();
+  const hasSkus = SKUS_DATA.length > 0;
+  const econ = useStore((s: any) => s.productEconomics);
+  const product = useStore((s: any) => s.onboardedProduct);
+  const quickAsk = useStore((s: any) => s.quickAsk);
+  const regenerateProductEconomics = useStore((s: any) => s.regenerateProductEconomics);
+  const productEconomicsLoading = useStore((s: any) => s.productEconomicsLoading);
+  const productEconomicsError = useStore((s: any) => s.productEconomicsError);
+  const [watched, setWatched] = useState<Record<string, boolean>>({});
+  const [applied, setApplied] = useState<Record<string, boolean>>({});
+  // Live CollectAPI finance widgets (FX + BIST).
+  const [fx, setFx] = useState<{ rates: any[]; lastupdate?: string; degraded?: boolean } | null>(null);
+  const [bist, setBist] = useState<{ stocks: any[]; degraded?: boolean } | null>(null);
+  const [financeLoading, setFinanceLoading] = useState(false);
+  const [financeError, setFinanceError] = useState<string | null>(null);
+
+  const loadFinance = async () => {
+    setFinanceLoading(true);
+    setFinanceError(null);
+    try {
+      const fxUrl = `${BASE_URL}/api/v1/pricing/fx?base=USD&amount=1&targets=TRY&targets=EUR&targets=GBP&targets=JPY`;
+      const bistUrl = `${BASE_URL}/api/v1/pricing/bist?codes=THYAO&codes=AKBNK&codes=ASELS&codes=SISE&codes=BIMAS&limit=5`;
+      const [fxRes, bistRes] = await Promise.all([
+        fetch(fxUrl, { signal: AbortSignal.timeout(15000) }),
+        fetch(bistUrl, { signal: AbortSignal.timeout(15000) }),
+      ]);
+      if (fxRes.ok) {
+        const data = await fxRes.json();
+        const out = data?.output || {};
+        setFx({ rates: out.rates || [], lastupdate: out.lastupdate, degraded: data?.status !== 'success' });
+      }
+      if (bistRes.ok) {
+        const data = await bistRes.json();
+        const out = data?.output || {};
+        setBist({ stocks: out.stocks || [], degraded: data?.status !== 'success' });
+      }
+    } catch (e: any) {
+      setFinanceError(e?.message || String(e));
+    } finally {
+      setFinanceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadFinance();
+    // refresh every 5 minutes
+    const t = setInterval(loadFinance, 300_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // True when at least one SKU has a real (backend-sourced) competitor scan
+  // result. The previous version always rendered competitor bands using a
+  // ±20% formula and called the chart "REKABET BANDI · CANLI" regardless.
+  const hasRealCompetitors = SKUS_DATA.some((s: any) => s.competitors_source === 'backend');
+  const hasRealSuggestions = SKUS_DATA.some((s: any) => s.suggested_source === 'backend');
+
+  const setProductEconomics = useStore((s: any) => s.setProductEconomics);
+  const scanCompetitors = async () => {
+    try {
+      const productKeyword = product?.product_name || '';
+      const items = SKUS_DATA.map((s: any) => ({
+        sku: s.sku,
+        // Compose a CollectAPI-friendly query: product name + variant title.
+        // Without a real keyword the marketplace search returns ~nothing.
+        query: [productKeyword, s.name].filter(Boolean).join(' ').trim() || s.sku,
+      }));
+      const res = await fetch(`${BASE_URL}/api/v1/pricing/scan-competitors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, source: 'trendyol', limit: 12 }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const output = data?.output || {};
+      const measuredAt: string | null = output.measured_at || null;
+      const results: any[] = Array.isArray(output.results) ? output.results : [];
+      const degraded = !!output.degraded;
+      // Merge results into productEconomics so the adapter reflects
+      // competitors_source = 'backend' for SKUs the scan covered.
+      const currentEcon = useStore.getState().productEconomics;
+      if (currentEcon && results.length && setProductEconomics) {
+        const bySku: Record<string, any> = {};
+        for (const r of results) if (r?.sku) bySku[r.sku] = r;
+        const rows = currentEcon.rows.map((row: any, i: number) => {
+          // Match by adapter-generated SKU index (same algorithm as adapter).
+          const skuKey = SKUS_DATA[i]?.sku;
+          const found = skuKey ? bySku[skuKey] : null;
+          if (!found) return row;
+          // Only adopt backend numbers when the response carries real samples.
+          const samples = typeof found.samples === 'number' ? found.samples : 0;
+          if (samples > 0 && typeof found.avg === 'number') {
+            return {
+              ...row,
+              competitors: { avg: found.avg, min: found.min, max: found.max },
+              competitors_measured_at: measuredAt,
+              competitors_samples: samples,
+            };
+          }
+          // Real call but no samples — keep heuristic band; just stamp the
+          // scan attempt so UI can show "son tarama X sn önce".
+          return { ...row, competitors_measured_at: measuredAt, competitors_samples: 0 };
+        });
+        setProductEconomics({ ...currentEcon, rows });
+      }
+      const measuredAge = measuredAt ? new Date(measuredAt).toLocaleTimeString('tr-TR', { hour12: false }) : null;
+      pushToast({
+        kind: degraded ? 'warn' : 'success',
+        title: degraded ? 'Tarama mock\'a düştü' : 'Rakip taraması bitti',
+        body: measuredAge ? `Ölçüm: ${measuredAge} · ${results.length} SKU` : 'Yanıt boş',
+      });
+    } catch (e: any) {
+      quickAsk('Aktif ürünün tüm SKU\'ları için rakip fiyat taraması yap, sapanları işaretle ve önerilen aksiyonları listele.');
+      pushToast({ kind: 'info', title: 'Hermes üzerinden taranıyor', body: e?.message || String(e) });
+    }
+  };
+  const applyAll = async () => {
+    const pending = SKUS_DATA.filter((s: any) => s.suggested !== s.price && !applied[s.sku]);
+    if (!pending.length) {
+      pushToast({ kind: 'info', title: 'Uygulanacak öneri yok', body: 'Tüm fiyatlar zaten optimal.' });
+      return;
+    }
+    if (!confirm(`${pending.length} SKU için fiyat değişikliği önerisini onay sırasına koy?`)) return;
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/pricing/apply-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sku_prices: pending.map((p: any) => ({ sku: p.sku, new_price: p.suggested })),
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        pushToast({ kind: 'success', title: 'Onay sırasına eklendi', body: `${data?.queued ?? pending.length} SKU` });
+      } else {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch (e: any) {
+      quickAsk(`Aşağıdaki SKU'lar için fiyat önerilerini uygulamak üzere her biri için yüksek-riskli onay aç: ${pending.map((p: any) => p.sku).join(', ')}.`);
+      pushToast({ kind: 'info', title: 'Hermes üzerinden uygulanıyor', body: e?.message || String(e) });
+    }
+    setApplied((prev) => pending.reduce((acc: any, p: any) => ({ ...acc, [p.sku]: true }), prev));
+  };
+  const applyOne = (sku: any) => {
+    quickAsk(`${sku.sku} için fiyatı ₺${sku.price}'den ₺${sku.suggested}'ye değiştirmek üzere onay aç (gerekçeyle birlikte).`);
+    setApplied((p) => ({ ...p, [sku.sku]: true }));
+  };
+  const watchOne = (sku: any) => {
+    setWatched((p) => ({ ...p, [sku.sku]: !p[sku.sku] }));
+    pushToast({ kind: 'info', title: watched[sku.sku] ? 'İzleme kaldırıldı' : 'İzlemeye eklendi', body: sku.name });
+  };
+  const avgMarginNum = SKUS_DATA.length ? SKUS_DATA.reduce((s: number, x: any) => s + x.margin, 0) / SKUS_DATA.length : 0;
+  const openSuggestions = SKUS_DATA.filter((x: any) => x.suggested !== x.price).length;
+  // Projected uplift is only meaningful when we have real sales-volume data.
+  // Without sales_30d the multiplication trivially returns 0, which we now
+  // surface as "—" rather than a confident "₺0".
+  const hasSalesData = SKUS_DATA.some((s: any) => (s.sales_30d || 0) > 0);
+  const projectedRevenue = hasSalesData
+    ? SKUS_DATA.reduce((acc: number, x: any) => acc + Math.max(0, (x.suggested - x.price) * (x.sales_30d || 0) / 4), 0)
+    : null;
   return (
-    <div className="flex flex-col h-full bg-[#1a1816] text-gray-200 overflow-hidden">
-      <header className="px-6 py-4 border-b border-[#2a2624] flex items-center justify-between">
+    <div className="page">
+      <div className="page__breadcrumb mono">HOME <span>›</span> FİYAT & FİNANS</div>
+      <div className="page__header">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2"><DollarSign size={22} className="text-emerald-400" /> Fiyat & Finans</h1>
-          <p className="text-xs text-gray-500 mt-0.5">Marj · COGS · CAC · LTV · ROAS · Finansman ihtiyacı — Pricing & Finance Agent</p>
+          <h1 className="page__title">
+            Fiyat & Finans
+            <span className="page__title-tag">DYNAMIC PRICING</span>
+            {hasSkus && (
+              <span className={`chip chip--${hasRealSuggestions || hasRealCompetitors ? 'acid' : 'amber'}`} style={{ background: 'transparent' }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: hasRealSuggestions || hasRealCompetitors ? 'var(--acid)' : 'var(--amber)' }} />
+                {hasRealSuggestions || hasRealCompetitors ? 'CANLI VERİ' : 'TAHMİNİ'}
+              </span>
+            )}
+          </h1>
+          <p className="page__sub">
+            SKU bazlı rekabetçi fiyat penceresi, marj durumu ve dinamik öneriler.
+            {hasSkus && !hasRealCompetitors && (
+              <span className="mono" style={{ marginLeft: 8, fontSize: 10, color: 'var(--amber)' }}>
+                · rakip bandı tahmini (±5–25% heuristic) — gerçek değerler için "Rakip Taraması"
+              </span>
+            )}
+          </p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="text-xs text-gray-500">Aktif ürün: <span className="text-yellow-300">{product?.product_name ?? '—'}</span></div>
-          <button
-            onClick={() => { void regenerate(); }}
-            disabled={loading || !product}
-            className="px-4 py-2 bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 rounded-lg flex items-center gap-2 hover:bg-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold"
-          >
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            {loading ? 'Üretiliyor…' : econ ? 'Yeniden Üret' : 'Üret'}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn--ghost" onClick={scanCompetitors} disabled={productEconomicsLoading}>
+            <Icon name="refresh" size={12} /> {productEconomicsLoading ? 'Taranıyor…' : 'Rakip Taraması'}
+          </button>
+          <button className="btn btn--primary" onClick={applyAll}>
+            <Icon name="zap" size={12} /> Tüm Önerileri Uygula
           </button>
         </div>
-      </header>
-
-      <ChatCommandBar
-        commands={[
-          { label: 'Fiyat analizi üret', message: 'fiyat analizini yeniden üret' },
-          { label: 'Marj optimizasyonu', message: `${product?.product_name ?? 'ürünüm'} için marj optimizasyon önerileri ver` },
-          { label: 'Rekabetçi fiyat analizi', message: `${product?.product_name ?? 'ürünüm'} için rakip fiyatları analiz et ve optimum fiyat bandı öner` },
-          { label: 'Kanal kârlılığı', message: 'kanal bazlı kârlılık raporu oluştur' },
-          { label: 'İndirim stratejisi', message: `${product?.product_name ?? 'ürünüm'} için satış hızlandırıcı indirim stratejisi öner` },
-        ]}
-      />
-
-      {!product && (
-        <div className="p-6">
-          <EmptyState title="Önce bir ürün onboard et" body="Fiyat & finans analizi için aktif bir ürüne ihtiyaç var." />
-        </div>
-      )}
-
-      {product && !econ && !loading && !error && (
-        <div className="p-6">
-          <EmptyState
-            title={`${product.product_name} için fiyat & finans verisi henüz yok`}
-            body={`Sağ üstteki "Üret" butonuna bas — Pricing & Finance Agent ${product.category} ürünün için varyant fiyatları, kanal ROAS'ı, LTV/CAC ve finansman ihtiyacı tahmini hazırlayacak.`}
-          />
-        </div>
-      )}
-
-      {loading && product && (
-        <div className="p-6">
-          <div className="bg-[#262422] border border-[#3a3633] rounded-2xl p-12 text-center">
-            <Loader2 size={32} className="text-emerald-400 animate-spin mx-auto mb-3" />
-            <div className="text-sm text-gray-300">Pricing & Finance Agent çalışıyor…</div>
-            <div className="text-xs text-gray-500 mt-1">{product.product_name} için ekonomi modeli hazırlanıyor</div>
-          </div>
-        </div>
-      )}
-
-      {error && !loading && (
-        <div className="p-6">
-          <div className="bg-red-500/10 border border-red-500/40 rounded-xl p-4 flex items-start gap-3">
-            <AlertCircle size={18} className="text-red-400 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <div className="text-sm font-semibold text-red-300">Üretim başarısız</div>
-              <div className="text-xs text-gray-400 mt-1 break-words">{error}</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {econ && <PricingDashboard econ={econ} />}
-    </div>
-  );
-}
-
-function PricingDashboard({ econ }: { econ: import('@/types').ProductEconomicsSnapshot }) {
-  const productRows = econ.rows;
-  const channelStats = econ.channel_stats;
-  const totalCustomers = Math.max(econ.total_customers, 1);
-
-  const totalRevenue = productRows.reduce((s, p) => s + p.price * p.sales_30d, 0);
-  const totalCost = productRows.reduce((s, p) => s + p.cost * p.sales_30d, 0);
-  const grossProfit = totalRevenue - totalCost;
-  const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
-
-  const adSpend = channelStats.reduce((s, c) => s + c.spent, 0);
-  const adRevenue = channelStats.reduce((s, c) => s + c.revenue, 0);
-  const blendedRoas = adSpend > 0 ? adRevenue / adSpend : 0;
-
-  const cac = totalCustomers > 0 ? adSpend / totalCustomers : 0;
-  const ltv = econ.ltv_per_customer;
-  const ltvCacRatio = cac > 0 ? ltv / cac : 0;
-  const totalOrders = productRows.reduce((s, p) => s + p.sales_30d, 0);
-  const aov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-
-  const productEconomics = productRows.map((p) => {
-    const marketplaceFeePct = p.marketplace === 'Shopify' ? 0.029 : 0.18;
-    const shipping = 35;
-    const fee = p.price * marketplaceFeePct;
-    const netRevenue = p.price - fee - shipping;
-    const profit = netRevenue - p.cost;
-    const marginPct = p.price > 0 ? (profit / p.price) * 100 : 0;
-    return { ...p, fee, shipping, netRevenue, profit, marginPct };
-  });
-
-  const channelData = channelStats.map((c) => ({ ...c, roas: c.spent > 0 ? c.revenue / c.spent : 0 })).sort((a, b) => b.roas - a.roas);
-  const monthlyCogs = totalCost;
-  const fundingNeed = (adSpend + monthlyCogs) * 3 * 0.4;
-
-  return (
-    <>
-      <div className="grid grid-cols-6 gap-3 px-6 py-4">
-        <Kpi label="Brüt Marj" value={`${grossMargin.toFixed(1)}%`} hint={`₺${grossProfit.toLocaleString('tr-TR')}`} color={grossMargin >= 30 ? 'text-emerald-400' : 'text-yellow-400'} icon={<TrendingUp size={14} />} />
-        <Kpi label="AOV" value={`₺${aov.toFixed(0)}`} hint={`${totalOrders.toLocaleString('tr-TR')} sipariş`} color="text-cyan-400" />
-        <Kpi label="CAC" value={`₺${cac.toFixed(0)}`} hint="Müşteri başına" color="text-pink-400" icon={<Target size={14} />} />
-        <Kpi label="LTV" value={`₺${ltv}`} hint="Ortalama" color="text-violet-400" icon={<Wallet size={14} />} />
-        <Kpi label="LTV / CAC" value={`${ltvCacRatio.toFixed(1)}x`} hint={ltvCacRatio >= 3 ? 'Sağlıklı' : 'İzlenmeli'} color={ltvCacRatio >= 3 ? 'text-emerald-400' : 'text-red-400'} />
-        <Kpi label="Blended ROAS" value={`${blendedRoas.toFixed(1)}x`} hint="Tüm kanallar" color="text-yellow-400" icon={<Activity size={14} />} />
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-4">
-        <Card title="Ürün Ekonomisi" hint="Liste fiyatından net kâra">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="text-[10px] uppercase text-gray-500 tracking-wider">
-                <tr className="border-b border-[#3a3633]">
-                  <th className="text-left py-2 px-2">Ürün</th>
-                  <th className="text-left py-2 px-2">Kanal</th>
-                  <th className="text-right py-2 px-2">Fiyat</th>
-                  <th className="text-right py-2 px-2">COGS</th>
-                  <th className="text-right py-2 px-2">Komisyon</th>
-                  <th className="text-right py-2 px-2">Kargo</th>
-                  <th className="text-right py-2 px-2">Net Gelir</th>
-                  <th className="text-right py-2 px-2">Kâr</th>
-                  <th className="text-right py-2 px-2">Marj %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {productEconomics.map((row) => (
-                  <tr key={row.title} className="border-b border-[#2a2624] hover:bg-[#262422]/50">
-                    <td className="py-2 px-2 text-gray-200 truncate max-w-[220px]">{row.title}</td>
-                    <td className="py-2 px-2 text-gray-400">{row.marketplace}</td>
-                    <td className="py-2 px-2 text-right text-gray-300">₺{row.price.toFixed(0)}</td>
-                    <td className="py-2 px-2 text-right text-red-300">-₺{row.cost.toFixed(0)}</td>
-                    <td className="py-2 px-2 text-right text-orange-300">-₺{row.fee.toFixed(0)}</td>
-                    <td className="py-2 px-2 text-right text-orange-300">-₺{row.shipping}</td>
-                    <td className="py-2 px-2 text-right text-gray-300">₺{row.netRevenue.toFixed(0)}</td>
-                    <td className={`py-2 px-2 text-right font-semibold ${row.profit > 0 ? 'text-emerald-400' : 'text-red-400'}`}>₺{row.profit.toFixed(0)}</td>
-                    <td className={`py-2 px-2 text-right font-bold ${row.marginPct >= 25 ? 'text-emerald-400' : row.marginPct >= 15 ? 'text-yellow-400' : 'text-red-400'}`}>{row.marginPct.toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: 1, background: 'var(--border-faint)',
+        border: '1px solid var(--border)', borderRadius: 6,
+        marginBottom: 16, overflow: 'hidden',
+      }}>
+        {[
+          { l: 'Açık Öneriler',   v: hasSkus ? String(openSuggestions) : '—', sub: hasRealSuggestions ? 'backend pricing_agent' : (openSuggestions ? 'heuristic · backend onayı yok' : 'tüm fiyatlar optimal') },
+          { l: 'Ortalama Marj',   v: hasSkus ? (avgMarginNum * 100).toFixed(1) + '%' : '—', sub: 'hedef 40%', color: hasSkus ? (avgMarginNum >= 0.4 ? 'var(--acid)' : 'var(--amber)') : 'var(--fg-3)' },
+          { l: 'LTV / Müşteri',   v: econ?.ltv_per_customer ? '₺' + econ.ltv_per_customer.toLocaleString('tr-TR') : '—', sub: (econ?.total_customers ?? 0) + ' müşteri' },
+          { l: 'Tahmini Gelir +', v: projectedRevenue != null ? '+₺' + Math.round(projectedRevenue).toLocaleString('tr-TR') : '—', sub: projectedRevenue != null ? 'haftalık · öneriler uygulanırsa' : 'satış verisi yok', color: projectedRevenue != null ? 'var(--acid)' : 'var(--fg-3)' },
+        ].map(s => (
+          <div key={s.l} style={{ padding: '12px 16px', background: 'var(--bg-1)' }}>
+            <div className="label-eyebrow" style={{ marginBottom: 4 }}>{s.l}</div>
+            <div className="tnum" style={{ fontSize: 20, fontWeight: 500, color: s.color || 'var(--fg-1)' }}>{s.v}</div>
+            <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)', marginTop: 2 }}>{s.sub}</div>
           </div>
-        </Card>
+        ))}
+      </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Card title="Kanal Bazında ROAS" hint="Reklam yatırım getirisi">
-            <div className="space-y-2">
-              {channelData.map((c) => {
-                const max = Math.max(...channelData.map((x) => x.roas), 1);
-                const pct = (c.roas / max) * 100;
-                return (
-                  <div key={c.channel}>
-                    <div className="flex items-center justify-between text-[11px] mb-1">
-                      <span className="text-gray-300 font-medium">{c.channel}</span>
-                      <span className="text-yellow-300 font-bold">{c.roas.toFixed(1)}x</span>
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel__head">
+          <h3>Canlı Finans — CollectAPI</h3>
+          <span className="panel__head-tag">
+            {financeLoading ? 'YÜKLENİYOR' : fx?.degraded || bist?.degraded ? 'MOCK · DEGRADED' : 'CANLI'}
+          </span>
+          <button
+            className="btn btn--sm btn--ghost"
+            onClick={loadFinance}
+            disabled={financeLoading}
+            style={{ marginLeft: 'auto' }}
+          >
+            <Icon name="refresh" size={11} /> Yenile
+          </button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'var(--border-faint)' }}>
+          {/* FX */}
+          <div style={{ background: 'var(--bg-1)', padding: '12px 16px' }}>
+            <div className="label-eyebrow" style={{ marginBottom: 6 }}>
+              USD → TRY / EUR / GBP / JPY
+              {fx?.lastupdate && (
+                <span className="mono" style={{ marginLeft: 8, fontSize: 9, color: 'var(--fg-3)' }}>
+                  {fx.lastupdate}
+                </span>
+              )}
+            </div>
+            {fx?.rates?.length ? (
+              <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+                {fx.rates.map((r: any) => (
+                  <div key={r.code} style={{ minWidth: 90 }}>
+                    <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>
+                      1 USD → {r.code}
                     </div>
-                    <div className="h-2 bg-[#1a1816] rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-yellow-500 to-emerald-500" style={{ width: `${pct}%` }} />
+                    <div className="tnum" style={{ fontSize: 15, fontWeight: 500 }}>
+                      {typeof r.calculated === 'number' ? r.calculated.toFixed(2) : r.calculatedstr || r.rate}
                     </div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">Harcama: ₺{c.spent.toLocaleString('tr-TR')} · Gelir: ₺{c.revenue.toLocaleString('tr-TR')}</div>
                   </div>
-                );
-              })}
-            </div>
-          </Card>
-
-          <Card title="Finansman İhtiyacı" hint="Sonraki 90 gün — agent tahmini">
-            <div className="text-3xl font-bold text-yellow-400">₺{fundingNeed.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</div>
-            <p className="text-[11px] text-gray-500 mt-1 mb-3">Stok + reklam + operasyon işletme sermayesi (40% tampon)</p>
-            <div className="space-y-1.5 text-xs">
-              <Line label="Aylık reklam" value={`₺${adSpend.toLocaleString('tr-TR')}`} />
-              <Line label="Aylık COGS" value={`₺${monthlyCogs.toLocaleString('tr-TR')}`} />
-              <Line label="3 ay × giderler" value={`₺${((adSpend + monthlyCogs) * 3).toLocaleString('tr-TR')}`} />
-              <Line label="Tampon (40%)" value={`₺${fundingNeed.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`} highlight />
-            </div>
-          </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+                {financeError ? `Hata: ${financeError}` : 'Veri yok'}
+              </div>
+            )}
+          </div>
+          {/* BIST */}
+          <div style={{ background: 'var(--bg-1)', padding: '12px 16px' }}>
+            <div className="label-eyebrow" style={{ marginBottom: 6 }}>BIST · seçili hisseler</div>
+            {bist?.stocks?.length ? (
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                {bist.stocks.slice(0, 5).map((s: any) => {
+                  const rate = typeof s.rate === 'number' ? s.rate : 0;
+                  const color = rate > 0 ? 'var(--acid)' : rate < 0 ? 'var(--rose)' : 'var(--fg-3)';
+                  return (
+                    <div key={s.code} style={{ minWidth: 90 }}>
+                      <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>{s.code}</div>
+                      <div className="tnum" style={{ fontSize: 14, fontWeight: 500 }}>
+                        ₺{s.lastpricestr || s.lastprice}
+                      </div>
+                      <div className="mono" style={{ fontSize: 10, color }}>
+                        {rate > 0 ? '↑' : rate < 0 ? '↓' : '·'} {Math.abs(rate).toFixed(2)}%
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+                {financeError ? `Hata: ${financeError}` : 'Veri yok'}
+              </div>
+            )}
+          </div>
         </div>
+      </div>
 
-        {econ.suggestions.length > 0 && (
-          <Card title="Pricing Agent Önerileri" hint="Marj koruyarak büyüme">
-            <div className="space-y-2">
-              {econ.suggestions.map((s, i) => (
-                <Suggestion key={i} priority={s.priority} text={s.text} />
-              ))}
+      <div className="panel">
+        <div className="panel__head">
+          <h3>SKU Fiyat Penceresi</h3>
+          <span className="panel__head-tag">
+            REKABET BANDI · {hasRealCompetitors ? 'CANLI' : 'TAHMİNİ'}
+          </span>
+        </div>
+        {!hasSkus && (
+          <div style={{ padding: 40, textAlign: 'center' }}>
+            <div className="mono" style={{ fontSize: 11, color: 'var(--fg-3)', marginBottom: 8 }}>
+              ╭─ ürün ekonomisi yok ─╮
             </div>
-          </Card>
+            <div style={{ fontSize: 13, color: 'var(--fg-2)', marginBottom: 14 }}>
+              {product
+                ? `"${product.product_name}" için fiyat/maliyet/satış verisi henüz hesaplanmadı.`
+                : 'Önce bir ürün onboard et.'}
+            </div>
+            {productEconomicsError && (
+              <div className="mono" style={{ fontSize: 10, color: 'var(--rose)', marginBottom: 12 }}>
+                {productEconomicsError}
+              </div>
+            )}
+            {product && (
+              <button className="btn btn--primary" onClick={() => regenerateProductEconomics()} disabled={productEconomicsLoading}>
+                <Icon name="zap" size={12} /> {productEconomicsLoading ? 'Hesaplanıyor…' : 'Ürün Ekonomisini Üret'}
+              </button>
+            )}
+          </div>
         )}
+        {hasSkus && (
+          <div className="row" style={{
+            gridTemplateColumns: '1.5fr 1fr 1fr 240px 1fr 110px',
+            background: 'var(--bg-2)',
+            padding: '8px 16px',
+          }}>
+            <span className="label-eyebrow">SKU</span>
+            <span className="label-eyebrow">Fiyat</span>
+            <span className="label-eyebrow">Marj</span>
+            <span className="label-eyebrow">Rakip Bandı {hasRealCompetitors ? '' : '(tahmini)'}</span>
+            <span className="label-eyebrow">Öneri</span>
+            <span className="label-eyebrow">Aksiyon</span>
+          </div>
+        )}
+        {SKUS_DATA.map((s: any) => {
+          const change = s.suggested - s.price;
+          const changePct = ((change / s.price) * 100).toFixed(1);
+          const bandMin = Math.min(s.competitors.min, s.price) - 20;
+          const bandMax = Math.max(s.competitors.max, s.price) + 20;
+          const bandRange = bandMax - bandMin;
+          const pos = (v) => ((v - bandMin) / bandRange) * 100;
+          return (
+            <div key={s.sku} className="row" style={{
+              gridTemplateColumns: '1.5fr 1fr 1fr 240px 1fr 110px',
+              padding: '14px 16px',
+            }}>
+              <div>
+                <div style={{ fontSize: 13 }}>{s.name}</div>
+                <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>{s.sku}</div>
+              </div>
+              <div>
+                <span className="tnum" style={{ fontSize: 14, fontWeight: 500 }}>₺{s.price}</span>
+              </div>
+              <div>
+                <span className="tnum" style={{
+                  fontSize: 13,
+                  color: s.margin > 0.4 ? 'var(--acid)' : 'var(--amber)',
+                }}>{(s.margin*100).toFixed(0)}%</span>
+              </div>
+              <div style={{ position: 'relative', height: 28 }}>
+                <div style={{ position: 'absolute', left: 0, right: 0, top: 13, height: 2, background: 'var(--bg-3)' }} />
+                {/* Competitor band */}
+                <div style={{
+                  position: 'absolute', top: 8, height: 12,
+                  left: pos(s.competitors.min) + '%',
+                  width: (pos(s.competitors.max) - pos(s.competitors.min)) + '%',
+                  background: 'rgba(155,123,255,0.18)',
+                  border: '1px solid rgba(155,123,255,0.4)',
+                  borderRadius: 2,
+                }} />
+                {/* Competitor avg */}
+                <div style={{
+                  position: 'absolute', top: 6, height: 16, width: 2,
+                  left: pos(s.competitors.avg) + '%',
+                  background: 'var(--violet)',
+                }} />
+                {/* Our price */}
+                <div style={{
+                  position: 'absolute', top: 4, height: 20, width: 3,
+                  left: pos(s.price) + '%',
+                  background: 'var(--acid)',
+                  borderRadius: 1,
+                  boxShadow: '0 0 6px var(--acid)',
+                }} />
+                {/* Suggested marker */}
+                {s.suggested !== s.price && (
+                  <div style={{
+                    position: 'absolute', top: 6, height: 16, width: 2,
+                    left: pos(s.suggested) + '%',
+                    background: 'var(--amber)',
+                    borderLeft: '2px dashed var(--amber)',
+                  }} />
+                )}
+              </div>
+              <div>
+                {change !== 0 ? (
+                  <div>
+                    <div className="mono" style={{ fontSize: 13, color: change > 0 ? 'var(--acid)' : 'var(--rose)' }}>
+                      <span className="tnum">₺{s.suggested}</span>
+                      <span style={{ marginLeft: 6, fontSize: 11 }}>{change > 0 ? '↑' : '↓'} {Math.abs(changePct)}%</span>
+                      {s.suggested_source === 'heuristic' && (
+                        <span className="mono" style={{ marginLeft: 6, fontSize: 9, padding: '1px 4px', border: '1px solid var(--border)', borderRadius: 2, color: 'var(--amber)' }}>
+                          heuristic
+                        </span>
+                      )}
+                    </div>
+                    <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>
+                      vs rakip {((s.suggested - s.competitors.avg)/s.competitors.avg*100).toFixed(1)}%{s.competitors_source === 'estimated' ? ' (tahmini)' : ''}
+                    </div>
+                  </div>
+                ) : (
+                  <span className="mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>— optimal</span>
+                )}
+              </div>
+              <div>
+                {change !== 0 ? (
+                  <button
+                    className="btn btn--sm btn--primary"
+                    onClick={() => applyOne(s)}
+                    disabled={applied[s.sku]}
+                  >
+                    {applied[s.sku] ? 'Onay sırasında' : 'Uygula'}
+                  </button>
+                ) : (
+                  <button
+                    className={`btn btn--sm ${watched[s.sku] ? '' : 'btn--ghost'}`}
+                    onClick={() => watchOne(s)}
+                  >
+                    {watched[s.sku] ? 'İzleniyor' : 'İzle'}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
-    </>
-  );
-}
-
-function Card({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-[#262422] border border-[#3a3633] rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3"><h3 className="text-sm font-bold text-gray-200">{title}</h3>{hint && <span className="text-[10px] text-gray-500">{hint}</span>}</div>
-      {children}
     </div>
   );
-}
+};
 
-function Kpi({ label, value, hint, icon, color }: { label: string; value: string; hint?: string; icon?: React.ReactNode; color: string }) {
-  return (
-    <div className="bg-[#262422] border border-[#3a3633] rounded-xl p-3">
-      <div className="flex items-center justify-between text-[10px] text-gray-500"><span className="uppercase tracking-wider">{label}</span>{icon}</div>
-      <div className={`text-xl font-bold mt-1 ${color}`}>{value}</div>
-      {hint && <div className="text-[10px] text-gray-500 mt-0.5">{hint}</div>}
-    </div>
-  );
-}
-
-function Line({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className={`flex items-center justify-between ${highlight ? 'border-t border-[#3a3633] pt-1.5 mt-1 font-semibold' : ''}`}>
-      <span className="text-gray-400">{label}</span>
-      <span className={highlight ? 'text-yellow-300' : 'text-gray-200'}>{value}</span>
-    </div>
-  );
-}
-
-function Suggestion({ priority, text }: { priority: 'high' | 'medium' | 'low'; text: string }) {
-  const map = { high: { dot: 'bg-red-400', label: 'YÜKSEK' }, medium: { dot: 'bg-yellow-400', label: 'ORTA' }, low: { dot: 'bg-gray-400', label: 'DÜŞÜK' } };
-  return (
-    <div className="flex items-start gap-3 bg-[#1a1816] rounded-lg px-3 py-2">
-      <div className={`w-1.5 h-1.5 rounded-full ${map[priority].dot} mt-1.5 shrink-0`} />
-      <div className="flex-1">
-        <span className="text-[9px] font-bold text-gray-500 tracking-widest">{map[priority].label}</span>
-        <p className="text-xs text-gray-300 leading-relaxed mt-0.5">{text}</p>
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="bg-[#262422] border border-dashed border-[#3a3633] rounded-2xl p-10 text-center">
-      <DollarSign size={32} className="text-emerald-400/40 mx-auto mb-3" />
-      <div className="text-base font-semibold text-gray-200">{title}</div>
-      <p className="text-xs text-gray-500 mt-2 max-w-md mx-auto leading-relaxed">{body}</p>
-    </div>
-  );
-}
+// ============================================================
+// GROWTH — büyüme deneyleri
+export { PricingPage };
+export default PricingPage;

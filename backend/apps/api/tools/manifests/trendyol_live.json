@@ -110,5 +110,48 @@
     "cost_estimate_usd": 0.002,
     "mode": "live",
     "tags": ["store", "trendyol", "marketplace", "tr", "pricing", "inventory"]
+  },
+  {
+    "tool_id": "trendyol_create_listing",
+    "name": "Trendyol'da Ürün İlanı Oluştur",
+    "description": "POST /sapigw/suppliers/{id}/v2/products — yeni ürün listeleme. Yüksek riskli, insan onayı gerektirir.",
+    "category": "store",
+    "provider": "trendyol",
+    "auth_required": true,
+    "timeout_ms": 30000,
+    "requires_approval": true,
+    "risk_level": "medium",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "title": {"type": "string", "description": "Ürün başlığı"},
+        "description": {"type": "string"},
+        "barcode": {"type": "string"},
+        "sale_price": {"type": "number", "minimum": 0},
+        "list_price": {"type": "number", "minimum": 0},
+        "quantity": {"type": "integer", "minimum": 0},
+        "categoryId": {"type": "integer"},
+        "brand": {"type": "string"},
+        "productMainId": {"type": "string"},
+        "stockCode": {"type": "string"},
+        "vatRate": {"type": "integer"},
+        "currencyType": {"type": "string"}
+      },
+      "required": ["title", "barcode", "sale_price"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "product_main_id": {"type": "string"},
+        "barcode": {"type": "string"},
+        "batch_request_id": {"type": "string"},
+        "status": {"type": "string"},
+        "ok": {"type": "boolean"}
+      }
+    },
+    "allowed_agents": ["catalog_agent", "marketing_agent", "dynamic_pricing_agent", "supervisor"],
+    "cost_estimate_usd": 0.005,
+    "mode": "live",
+    "tags": ["store", "trendyol", "marketplace", "tr", "listing", "publish"]
   }
 ]

@@ -64,7 +64,11 @@ const GEMINI_PAYLOAD = {
 };
 
 test.describe('Gemini fallback when backend is offline', () => {
-  test('Brand regen falls back to direct Gemini and renders brand_name', async ({ page }) => {
+  // Obsolete: the frontend no longer performs direct generativelanguage.googleapis.com
+  // calls — brand identity regeneration was moved server-side (POST /api/v1/brand/regenerate-identity)
+  // so the browser does not hold VITE_GEMINI_API_KEY. Re-enable only if the
+  // direct-browser-Gemini fallback path is intentionally restored.
+  test.skip('Brand regen falls back to direct Gemini and renders brand_name', async ({ page }) => {
     // Backend is broken: /health says offline, /api/v1/chat returns 503.
     await page.route('**/health', (route) => route.abort('connectionrefused'));
     await page.route('**/api/v1/chat', (route) =>

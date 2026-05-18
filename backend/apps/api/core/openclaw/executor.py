@@ -161,12 +161,26 @@ class OpenClawExecutor:
             log.info("openclaw.fallback", from_tool=tool.tool_id, to=tool.fallback_tool_id)
             fb = self.registry.get(tool.fallback_tool_id)
             if fb is not None:
-                output = await self._invoke(fb, payload)
-                dur = int((time.monotonic() - start) * 1000)
-                return ToolExecutionResult(
-                    tool_id=tool.tool_id, status="fallback_used", duration_ms=dur,
-                    cost_usd=fb.cost_estimate_usd, output=output,
-                )
+                try:
+                    output = await asyncio.wait_for(
+                        self._invoke(fb, payload),
+                        timeout=fb.timeout_ms / 1000,
+                    )
+                    dur = int((time.monotonic() - start) * 1000)
+                    return ToolExecutionResult(
+                        tool_id=tool.tool_id, status="fallback_used", duration_ms=dur,
+                        cost_usd=fb.cost_estimate_usd, output=output,
+                    )
+                except Exception as fb_exc:
+                    # Fallback also failed — let the original failure carry
+                    # through so the caller still gets a structured failure
+                    # result instead of an uncaught exception.
+                    log.warning(
+                        "openclaw.fallback.failed",
+                        tool_id=tool.tool_id,
+                        fallback=tool.fallback_tool_id,
+                        error=str(fb_exc)[:200],
+                    )
 
         dur = int((time.monotonic() - start) * 1000)
         return ToolExecutionResult(

@@ -34,6 +34,7 @@ class CEOAgent(BaseAgent):
 
 class MarketResearchAgent(BaseAgent):
     primary_tools = ["google_trends_query", "competitor_profile_builder", "niche_scorer"]
+    grounding = ["google_search", "collectapi"]
 
     def system_prompt(self, ctx: dict[str, Any]) -> str:
         return (
@@ -61,6 +62,7 @@ class BrandIdentityAgent(BaseAgent):
 
 class PricingAgent(BaseAgent):
     primary_tools = ["margin_calculator", "competitor_price_lookup", "campaign_discount_simulator"]
+    grounding = ["google_search", "collectapi"]
 
     def system_prompt(self, ctx: dict[str, Any]) -> str:
         return (
@@ -201,6 +203,7 @@ class ComplianceAgent(BaseAgent):
 
 class LegalComplianceAgent(BaseAgent):
     primary_tools = ["kvkk_compliance_checker", "return_policy_generator", "privacy_policy_generator"]
+    grounding = ["google_search", "collectapi"]
 
     def system_prompt(self, ctx: dict[str, Any]) -> str:
         return (

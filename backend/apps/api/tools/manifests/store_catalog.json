@@ -172,24 +172,33 @@
   },
   {
     "tool_id": "image_analysis",
-    "name": "Ürün Görseli Analizi",
-    "description": "Ürün görselinde kalite, arka plan, ışık ve görsel uyum kontrolü yapar.",
+    "name": "Ürün Görsel Analizi",
+    "description": "Ürün fotoğrafından kategori, baskın renkler, materyal ve görsel özellikleri çıkarır. Gemini Vision; anahtar yoksa deterministik fallback.",
     "category": "catalog",
-    "provider": "internal",
+    "provider": "gemini",
     "auth_required": false,
-    "timeout_ms": 18000,
+    "timeout_ms": 30000,
     "input_schema": {
       "type": "object",
-      "properties": {"image_url": {"type": "string"}},
-      "required": []
+      "properties": {
+        "image_b64": {"type": "string", "description": "base64 (data: URL veya saf base64)"},
+        "image_url": {"type": "string", "description": "Public URL — image_b64 yoksa kullanılır."},
+        "product_name": {"type": "string"}
+      }
     },
     "output_schema": {
       "type": "object",
-      "properties": {"score": {"type": "number"}, "issues": {"type": "array"}}
+      "properties": {
+        "category": {"type": "string"},
+        "colors": {"type": "array", "items": {"type": "string"}},
+        "material": {"type": "string"},
+        "features": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": "number"}
+      }
     },
-    "allowed_agents": ["catalog_agent", "brand_identity_agent"],
-    "cost_estimate_usd": 0.004,
-    "mode": "mock",
-    "tags": ["catalog", "image"]
+    "allowed_agents": ["catalog_agent", "brand_identity_agent", "market_research_agent", "supervisor"],
+    "cost_estimate_usd": 0.0035,
+    "mode": "live",
+    "tags": ["catalog", "vision", "gemini"]
   }
 ]

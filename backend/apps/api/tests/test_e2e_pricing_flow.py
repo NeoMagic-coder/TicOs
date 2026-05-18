@@ -26,7 +26,7 @@ from apps.api.core.openclaw.registry import get_registry
 
 
 class StubLLM(LLMProvider):
-    async def generate(self, *, system, messages, temperature=0.7, max_tokens=1024) -> LLMResponse:
+    async def generate(self, *, system, messages, temperature=0.7, max_tokens=1024, grounding=None) -> LLMResponse:
         last_user = next((m.content for m in reversed(messages) if m.role != "model"), "")
 
         if "Critic-Agent" in (system or ""):
@@ -118,10 +118,17 @@ def orchestrator_with_trendyol(monkeypatch):
         return stub
 
     monkeypatch.setattr("apps.api.core.llm.provider.get_llm_provider", _provider)
-    monkeypatch.setattr("apps.api.agents.base.get_llm_provider", _provider)
     monkeypatch.setattr("apps.api.core.hermes.orchestrator.get_llm_provider", _provider)
     monkeypatch.setattr("apps.api.core.planner.get_llm_provider", _provider)
     monkeypatch.setattr("apps.api.agents.critic.get_llm_provider", _provider)
+    # BaseAgent.llm resolves through the per-agent resolver; patch it directly
+    # so agents see the stub and bypass the module-level cache.
+    monkeypatch.setattr(
+        "apps.api.core.llm.per_agent.get_llm_provider_for_agent",
+        lambda agent_id: stub,
+    )
+    from apps.api.core.llm import per_agent as _per_agent
+    _per_agent.invalidate_cache()
 
     registry = AgentRegistry()
     executor = OpenClawExecutor()

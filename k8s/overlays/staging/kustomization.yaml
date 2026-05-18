@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Staging environment overlay
+# Usage: kubectl kustomize k8s/overlays/staging
+
+namespace: oneproduct
+
+commonLabels:
+  environment: staging
+  app.kubernetes.io/name: oneproduct
+
+replicas:
+  - name: oneproduct-api
+    count: 2
+  - name: oneproduct-web
+    count: 2
+
+images:
+  - name: REGISTRY/api
+    newName: ghcr.io/yourorg/oneproduct/api
+    newTag: staging
+  - name: REGISTRY/web
+    newName: ghcr.io/yourorg/oneproduct/web
+    newTag: staging
+
+configMapGenerator:
+  - name: oneproduct-config
+    behavior: merge
+    literals:
+      - VITE_API_BASE_URL=https://api-staging.oneproduct.example.com
+      - LOG_LEVEL=info
+
+resources:
+  - ../../deployment.yaml
+  - ../../service.yaml
+  - ../../ingress.yaml

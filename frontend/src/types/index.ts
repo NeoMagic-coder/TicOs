@@ -228,6 +228,8 @@ export interface DashboardSummary {
   recent_tasks: Task[];
   agent_activity: AgentActivity[];
   sales_trend: { date: string; value: number }[];
+  orders_trend?: number[];
+  roas_trend?: number[];
   channel_performance: { channel: string; sales: number; orders: number }[];
   _isDemo?: true;
 }
@@ -295,6 +297,21 @@ export interface BrandIdentity {
   tagline: string;
   story: string;
   positioning: string;
+  mission?: string;
+  vision?: string;
+  archetype?: string;
+  elevator_pitch?: string;
+  usp?: string;
+  values?: { name: string; description: string }[];
+  differentiators?: string[];
+  taglines?: string[];
+  tone_examples?: { context: string; example: string }[];
+  hashtags?: string[];
+  keywords?: string[];
+  typography?: { heading: string; body: string; rationale?: string };
+  logo_concepts?: { name: string; description: string }[];
+  imagery_style?: { mood: string; do: string[]; dont: string[]; references?: string[] };
+  competitors?: { name: string; positioning: string; gap: string }[];
   alternatives: { name: string; score: number; domain: string; reasoning: string }[];
   palette: { role: string; hex: string; label: string }[];
   voice: { traits: string[]; do: string[]; dont: string[] };

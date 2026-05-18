@@ -165,7 +165,7 @@ export function SupervisorChatDock() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Hide dock on the dedicated chat page (it already has a full-page chat).
-  const hideOnChatPage = currentPage === 'chat';
+  const hideOnChatPage = currentPage === 'chat' || currentPage === 'supervisor';
 
   useEffect(() => {
     if (supervisorDockOpen && !minimized) {
@@ -212,7 +212,7 @@ export function SupervisorChatDock() {
           <span className="absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-60 animate-ping" />
           <Sparkles size={18} className="relative text-white" />
         </span>
-        <span className="text-xs font-semibold text-white">Supervisor</span>
+        <span className="text-xs font-semibold text-white">Supervisor Dock</span>
         <kbd className="hidden sm:inline ml-1 px-1.5 py-0.5 rounded bg-black/30 text-[10px] text-indigo-100 border border-white/10">
           Ctrl+K
         </kbd>

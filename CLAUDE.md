@@ -66,6 +66,7 @@ If the backend reports "API key not valid" even after setting `.env.local`, a st
 GET    /health
 POST   /api/v1/chat              # Hermes orchestration — DAG + merge (buffered)
 POST   /api/v1/chat/stream       # SSE: live progress events + final message
+WS     /ws/voice                 # Voice Supervisor — audio in, intent dispatch out
 GET    /api/v1/agents
 GET    /api/v1/agents/{id}
 GET    /api/v1/tools             # ?category= ?agent_id=
@@ -76,6 +77,21 @@ POST   /api/v1/tasks
 GET    /api/v1/approvals
 POST   /api/v1/approvals/{id}/{approve|reject}
 POST   /api/v1/approvals/{id}/estimate    # LLM-estimated expected impact
+
+# Paperclip layer (org chart + goals + per-agent monthly budget)
+GET    /api/v1/org/units                 # 5 departments + members + heads
+GET    /api/v1/org/units/{id}
+GET    /api/v1/org/agents/{id}/unit      # which dept does an agent belong to
+GET    /api/v1/goals                     # list (filter by status / parent)
+POST   /api/v1/goals
+GET    /api/v1/goals/{id}
+PATCH  /api/v1/goals/{id}
+DELETE /api/v1/goals/{id}                # returns {"deleted": id}
+GET    /api/v1/goals/{id}/ancestors      # root-first chain
+GET    /api/v1/goals/tree/full           # nested tree + task counts
+GET    /api/v1/agents/budgets            # per-agent monthly budget rows
+GET    /api/v1/agents/{id}/budget        # auto-creates a zero-cap row on first GET
+PUT    /api/v1/agents/{id}/budget        # set limit_usd / warn_threshold_pct
 ```
 
 OpenAPI docs at `http://localhost:8000/docs`.
@@ -221,17 +237,41 @@ Worked example: `restock_alert_builder` (yeni `stock` aracı,
   (`AGENT_CLASSES` map). No agent uses the `GenericAgent` fallback. The
   multi-agent autonomy layer adds 4 agents: `negotiation_agent`,
   `logistics_agent`, `dynamic_pricing_agent`, `autonomous_decision_agent`.
-- **Tool manifests**: 14 JSON files under `apps/api/tools/manifests/`,
-  75 manifest entries total (includes Sahibinden + Dolap listing/onboard tools). The `autonomous_layer.json` file groups
-  negotiation, logistics, dynamic-pricing and decision-policy tools. Most are `mode: "mock"`; live adapters:
-  `brand_visual_generator` (Gemini image), `memory_search` and `knowledge_search` (pgvector via
-  `apps.api.core.memory.store`; `knowledge_search` filters `kind=doc` and supports `product_id` scoping),
-  three Shopify Admin REST tools
-  (`shopify_store_setup`, `shopify_get_orders`, `shopify_update_inventory`),
-  three Trendyol Partner API tools (`trendyol_get_products`, `trendyol_get_orders`,
-  `trendyol_update_price`) and two GA4 Data API tools (`ga4_realtime_report`,
-  `ga4_sessions_report`) — all wrapped with `apps.api.core.openclaw.breaker` so an
-  OPEN circuit or missing credentials degrade to mock with `degraded: true` in the payload.
+- **Org units**: 5 departments (`yonetim`, `pazarlama`, `operasyon`,
+  `finans`, `arge`) with 22 memberships seeded by `seed_default_org()`.
+- **Tool manifests**: 16 JSON files under `apps/api/tools/manifests/`,
+  90 manifest entries total (46 `live`, 44 `mock`). Live adapters live in
+  `apps/api/tools/live/`:
+  - **External integrations**: Shopify Admin REST (3), Trendyol Partner API
+    (4: get_products, get_orders, update_price, create_listing),
+    GA4 Data API (2), FakeStoreAPI (5: products, product detail,
+    categories, carts, users), CollectAPI (6: shopping search, product
+    detail, AI suggestion, multi-site price follow across Trendyol
+    /Hepsiburada/n11/Amazon/GittiGidiyor, multi-currency FX conversion
+    `/economy/currencyToAll`, BIST stocks `/economy/hisseSenedi`),
+    Gemini Image (`brand_visual_generator`), Gemini Vision
+    (`image_analysis` — ürün fotoğrafından kategori/renk/materyal çıkarır),
+    pgvector memory
+    (`memory_search`, `knowledge_search`), competitor scan, subagent runner,
+    Google Search grounding (`web_search_grounded` — Gemini-native
+    `googleSearch` tool wrapper, surfaces queries + cited source URIs).
+  - **LLM-only (Gemini)** in `apps/api/tools/live/llm_tools.py` (9 tools):
+    `brand_name_generator`, `color_palette_generator`,
+    `target_persona_builder`, `sentiment_analyzer`, `draft_reply_generator`,
+    `review_response_generator`, `email_sequence_writer`,
+    `listing_compliance_check`, `forbidden_word_scanner`. Each calls
+    `get_llm_provider()` directly; when no `GEMINI_API_KEY` is set they
+    short-circuit to a deterministic fallback with `degraded=True`.
+  - **Deterministic compute** in `apps/api/tools/live/compute_tools.py`
+    (10 tools): `margin_calculator`, `cogs_calculator`,
+    `campaign_discount_simulator`, `autonomy_policy_check`, `stock_forecast`,
+    `ab_test_designer`, `niche_scorer`, `trend_detector`, `anomaly_detector`,
+    `return_policy_generator`. Pure Python, no LLM/HTTP — reproducible numeric
+    outputs replace the previous mock-router canned shapes.
+
+  Every adapter is wrapped with `apps.api.core.openclaw.breaker` so an
+  OPEN circuit or missing credentials degrade to mock with `degraded: true`
+  in the payload.
 
 If you add or remove agents/tools, update both these numbers and the
 matching sentence in `README.md`.
@@ -249,6 +289,39 @@ matching sentence in `README.md`.
 
 The four autonomy agents in `AGENT_CLASSES` (`negotiation_agent`, `logistics_agent`, `dynamic_pricing_agent`, `autonomous_decision_agent`) use these modules rather than making direct LLM calls for every decision.
 
+### Paperclip layer (org chart + goals + per-agent monthly budget)
+
+Three thin layers borrowed from paperclipai/paperclip. None of them replace
+existing functionality — they add company-shaped structure on top of the
+flat agent registry.
+
+- **Org chart** (`apps/api/core/org/`). 5 fixed departments (`yonetim`,
+  `pazarlama`, `operasyon`, `finans`, `arge`) with one head agent each and
+  22 memberships covering every seeded agent. `seed_default_org()` runs in
+  the FastAPI lifespan and is idempotent. Surfaced as the `OrgPage` —
+  department cards with member chips and a head badge.
+- **Goal ancestry** (`GoalRow` in `models.py`, `routes/goals.py`).
+  Self-referential tree via `parent_goal_id`. Each task can be linked to a
+  goal through `TaskRow.goal_id`. `/goals/tree/full` returns nested
+  `{goal, children[], task_count}` nodes the `GoalsPage` renders with depth
+  indentation.
+- **Per-agent monthly budget** (`AgentBudgetRow`, `core/budget.py`).
+  One row per `(agent_id, month=YYYY-MM)`. Functions: `set_agent_budget`,
+  `record_agent_spend` (clamps spent_usd to limit_usd), `remaining_agent_budget`
+  (returns `None` when `limit_usd == 0`, meaning "no cap"), `is_agent_exhausted`.
+  The Hermes orchestrator gates every node in `_run_node_with_events`: if
+  the agent is exhausted, it emits an `agent_budget_exhausted` event and
+  returns an `AgentOutput(status="escalated", confidence=0.0)` without
+  invoking the LLM. After a successful run it records the per-node cost via
+  `asyncio.to_thread`. The `BudgetsPage` lets you set `limit_usd` per agent
+  inline and shows a green/amber/red progress bar.
+
+Dev SQLite databases benefit from a lightweight `ALTER TABLE` step inside
+`init_db()` — `Base.metadata.create_all` only creates *missing tables*, so
+the `_ensure_sqlite_columns()` helper adds `tasks.goal_id` to existing dev
+DBs without forcing the user to drop `apps/api/data/app.db`. Production
+Postgres should still use real migrations.
+
 ### Frontend
 
 - `src/stores/useStore.ts` is the single Zustand store. Pages in `src/pages/` are thin views over it. Layout/sidebar in `src/components/`. Path alias `@` → `src/`.
@@ -256,6 +329,22 @@ The four autonomy agents in `AGENT_CLASSES` (`negotiation_agent`, `logistics_age
 - `chatWithFallback` (`src/lib/api.ts`) — if the backend returns 5xx/timeout it calls Gemini directly, writing `fallback_used: true` into the audit log.
 - `sendUserMessageStream` in the store drives the SSE path; falls back to the buffered `sendUserMessage` if the stream errors mid-flight.
 - `detectIntent` in the store does Turkish substring matching for supervisor commands (navigation, bulk approvals, brand/pricing regeneration, etc.) and short-circuits the backend call when a match is found.
+
+### AI modality matrix
+
+| Modality   | Provider / tool             | Entry point                                   |
+|------------|-----------------------------|-----------------------------------------------|
+| Text       | Gemini 2.5 Flash Lite       | `apps/api/core/llm/provider.py`               |
+| Vision     | `image_analysis`            | `apps/api/tools/live/`                        |
+| Image      | `brand_visual_generator`    | `apps/api/core/llm/image.py`                  |
+| Live       | Voice Supervisor            | `apps/api/routes/voice.py` → `/ws/voice`      |
+| Embedding  | pgvector memory             | `apps/api/core/memory/store.py`               |
+
+The Live row is the WebSocket voice supervisor: client streams PCM, backend
+forwards to Gemini Live (`gemini-2.0-flash-live-001`), transcripts are run
+through a Turkish intent matcher (port of `detectIntent`), and matched
+intents are dispatched to the Hermes orchestrator. Falls back to MockProvider
++ browser `SpeechRecognition` when `GEMINI_API_KEY` is absent.
 
 ### LLM provider
 

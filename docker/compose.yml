@@ -1,11 +1,19 @@
+# Local dev orchestration — backend with --reload, frontend via Vite dev server.
+# Builds use the production Dockerfiles but override CMD to enable reload.
+#
+# Usage from repo root:
+#   docker compose -f docker/compose.yml up --build
+#
+# For production-style (built static assets + nginx), see compose.prod.yml.
 services:
   api:
     build:
-      context: ../backend
-      dockerfile: ../docker/backend.Dockerfile
+      context: ..
+      dockerfile: docker/backend.Dockerfile
     container_name: oneproduct-api
     ports:
       - "8000:8000"
+    command: ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     environment:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
     env_file:
@@ -13,19 +21,19 @@ services:
     volumes:
       - ../backend/apps:/app/apps
       - api_images:/app/apps/api/_images
+      - api_data:/app/apps/api/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=3).status == 200 else 1)"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
 
   web:
-    build:
-      context: ../frontend
-      dockerfile: ../docker/frontend.Dockerfile
+    image: node:20-alpine
     container_name: oneproduct-web
+    working_dir: /app
     ports:
       - "5173:5173"
     environment:
@@ -34,10 +42,9 @@ services:
     env_file:
       - ../env/.env.local
     volumes:
-      - ../frontend/src:/app/src
-      - ../frontend/index.html:/app/index.html
-      - ../frontend/vite.config.ts:/app/vite.config.ts
-      - ../frontend/tsconfig.json:/app/tsconfig.json
+      - ../frontend:/app
+      - /app/node_modules
+    command: sh -c "npm ci --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173"
     depends_on:
       api:
         condition: service_healthy
@@ -51,3 +58,4 @@ services:
 
 volumes:
   api_images:
+  api_data:

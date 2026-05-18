@@ -12,21 +12,28 @@ import traceback
 
 from apps.api.core.logging import get_logger
 from apps.api.tools.live import (
+    collectapi,
+    competitor_scan,
+    compute_tools,
+    fakestore,
     ga4,
     google_ads,
+    image_analysis,
     image_fallback,
     klaviyo,
+    llm_tools,
     meta_ads,
     review_aggregator,
     shopify,
     trendyol,
+    web_search,
 )
 
 log = get_logger(__name__)
 
 
 def register_all() -> None:
-    for mod in (shopify, trendyol, ga4, meta_ads, google_ads, klaviyo, review_aggregator, image_fallback):
+    for mod in (shopify, trendyol, ga4, fakestore, collectapi, competitor_scan, meta_ads, google_ads, klaviyo, review_aggregator, image_fallback, image_analysis, llm_tools, compute_tools, web_search):
         try:
             mod.register()
         except Exception as exc:  # one provider must not break the others

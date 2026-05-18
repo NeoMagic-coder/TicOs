@@ -18,6 +18,7 @@ from typing import Any
 
 from apps.api.core.llm.provider import LLMMessage, LLMProvider, get_llm_provider
 from apps.api.core.logging import get_logger
+from apps.api.core.observability import CRITIC_SCORES
 
 log = get_logger(__name__)
 
@@ -87,6 +88,8 @@ class CriticAgent:
 
         # Composite: positive axes − hallucination penalty (weighted).
         composite = 0.45 * concreteness + 0.35 * numeric + 0.20 * (1.0 - hallucination)
+        verdict = "accept" if composite >= 0.65 else "low"
+        CRITIC_SCORES.labels(mode="llm", verdict=verdict).inc()
         return CriticScore(
             score=round(composite, 3),
             concreteness=concreteness,
@@ -96,7 +99,7 @@ class CriticAgent:
         )
 
 
-_JSON_FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL | re.IGNORECASE)
+_JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", re.IGNORECASE)
 _NUMBER_RE = re.compile(r"\b\d+([.,]\d+)?\s*(%|tl|₺|gün|adet|kg|usd)?", re.IGNORECASE)
 
 
@@ -151,6 +154,8 @@ def _heuristic_score(text: str, *, reason: str) -> CriticScore:
     numeric = min(1.0, numbers / 5.0)
     hallucination = min(1.0, hedging / 4.0)
     composite = 0.45 * concreteness + 0.35 * numeric + 0.20 * (1.0 - hallucination)
+    verdict = "accept" if composite >= 0.65 else "low"
+    CRITIC_SCORES.labels(mode="heuristic_fallback", verdict=verdict).inc()
     return CriticScore(
         score=round(composite, 3),
         concreteness=round(concreteness, 3),

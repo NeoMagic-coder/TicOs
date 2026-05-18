@@ -1,5 +1,5 @@
 import { useStore } from '@/stores/useStore';
-import { selectPendingApprovalCount, selectLiveToolCount, selectMockToolCount } from '@/stores/selectors';
+import { selectPendingApprovalCount, selectLiveToolCount, selectMockToolCount, selectFailedTaskCount } from '@/stores/selectors';
 import {
   LayoutDashboard, Users, ListTodo, CheckCircle, Wrench,
   BookOpen, BarChart3, MessageSquare, Plug, Settings,
@@ -66,6 +66,7 @@ export function Sidebar() {
   const pendingCount = useStore(selectPendingApprovalCount);
   const liveCount = useStore(selectLiveToolCount);
   const mockCount = useStore(selectMockToolCount);
+  const failedTaskCount = useStore(selectFailedTaskCount);
 
   return (
     <aside className={`fixed left-0 top-0 h-full bg-gray-900 border-r border-gray-800 z-40 transition-all duration-300 flex flex-col ${sidebarOpen ? 'w-64' : 'w-16'}`}>
@@ -104,7 +105,8 @@ export function Sidebar() {
             <div className="space-y-0.5">
               {group.items.map(({ id, label, icon: Icon }) => {
                 const isActive = currentPage === id;
-                const badge = id === 'approvals' ? pendingCount : null;
+                const badge = id === 'approvals' ? pendingCount : id === 'tasks' ? failedTaskCount : null;
+                const badgeTone = id === 'tasks' && failedTaskCount > 0 ? 'bg-red-600' : 'bg-red-500';
                 return (
                   <button key={id} onClick={() => setCurrentPage(id)}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
@@ -116,7 +118,10 @@ export function Sidebar() {
                     <Icon size={16} className="shrink-0" />
                     {sidebarOpen && <span className="flex-1 text-left truncate">{label}</span>}
                     {sidebarOpen && badge != null && badge > 0 && (
-                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white">{badge}</span>
+                      <span
+                        className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white ${badgeTone}`}
+                        title={id === 'tasks' ? `${badge} başarısız görev` : undefined}
+                      >{badge}</span>
                     )}
                   </button>
                 );

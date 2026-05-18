@@ -242,6 +242,48 @@ async def _update_price_mock(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# ── trendyol_create_listing ───────────────────────────────────────────────────
+
+async def _create_listing_live(payload: dict[str, Any]) -> dict[str, Any]:
+    if not _configured():
+        raise RuntimeError("trendyol_not_configured: set TRENDYOL_* env vars")
+    sale_price = float(payload["sale_price"])
+    list_price = float(payload.get("list_price") or sale_price)
+    item: dict[str, Any] = {
+        "title": payload["title"],
+        "description": payload.get("description", ""),
+        "barcode": payload["barcode"],
+        "salePrice": sale_price,
+        "listPrice": list_price,
+        "quantity": int(payload.get("quantity", 0)),
+    }
+    for key in ("brand", "stockCode", "categoryId", "productMainId", "vatRate", "currencyType"):
+        if payload.get(key) is not None:
+            item[key] = payload[key]
+    body = {"items": [item]}
+    data = await _request("POST", _supplier_path("/v2/products"), json=body)
+    batch_id = (data or {}).get("batchRequestId") or (data or {}).get("batch_id")
+    return {
+        "product_main_id": payload.get("productMainId") or payload["barcode"],
+        "barcode": payload["barcode"],
+        "batch_request_id": batch_id,
+        "status": "submitted",
+        "ok": True,
+    }
+
+
+async def _create_listing_mock(payload: dict[str, Any]) -> dict[str, Any]:
+    barcode = payload.get("barcode") or "TY-MOCK-0001"
+    return {
+        "product_main_id": payload.get("productMainId") or barcode,
+        "barcode": barcode,
+        "batch_request_id": f"mock-{barcode}",
+        "status": "submitted",
+        "ok": True,
+        "degraded": True,
+    }
+
+
 # ── registration ──────────────────────────────────────────────────────────────
 
 def register() -> None:
@@ -267,6 +309,14 @@ def register() -> None:
             tool_id="trendyol_update_price",
             adapter=_update_price_live,
             mock_fallback=_update_price_mock,
+        ),
+    )
+    register_live_adapter(
+        "trendyol_create_listing",
+        with_breaker(
+            tool_id="trendyol_create_listing",
+            adapter=_create_listing_live,
+            mock_fallback=_create_listing_mock,
         ),
     )
     log.info("live.trendyol.registered", configured=_configured())

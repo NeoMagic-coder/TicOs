@@ -246,7 +246,7 @@ class PlannerAgent:
         )
 
 
-_JSON_FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL | re.IGNORECASE)
+_JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", re.IGNORECASE)
 
 
 def _parse_json(text: str) -> dict[str, Any] | None:
