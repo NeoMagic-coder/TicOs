@@ -366,7 +366,7 @@ class AgentLLMConfigRow(Base):
     __tablename__ = "agent_llm_configs"
 
     agent_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    provider: Mapped[str] = mapped_column(String(32), default="openrouter")  # gemini|openrouter|openai_compatible|mock
+    provider: Mapped[str] = mapped_column(String(32), default="gemini")  # gemini|mock
     model: Mapped[str] = mapped_column(String(120), default="")
     base_url: Mapped[str] = mapped_column(String(256), default="")  # only used for openai_compatible
     api_key_env: Mapped[str] = mapped_column(String(64), default="")  # env var name; empty = use provider's default

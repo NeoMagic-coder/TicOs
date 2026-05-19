@@ -20,6 +20,9 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
 
+import html as htmllib
+
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
@@ -168,6 +171,86 @@ def _extract_json(text: str) -> dict[str, Any]:
     return {}
 
 
+async def _scrape_product_html(url: str) -> dict[str, str]:
+    """Best-effort deterministic scraper — no LLM required.
+
+    Parses og:title, og:description, og:price, JSON-LD Product nodes, and
+    canonical <title>. Used as a fallback when the LLM is quota-exhausted
+    so the URL fetch flow still returns something useful.
+    """
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+        ),
+        "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            html = resp.text
+    except Exception as exc:
+        log.warning("products.scrape_failed", url=url[:200], error=str(exc)[:200])
+        return {}
+
+    def _meta(prop: str) -> str:
+        m = re.search(
+            rf'<meta[^>]+(?:property|name)=["\']{re.escape(prop)}["\'][^>]+content=["\']([^"\']+)["\']',
+            html, flags=re.IGNORECASE,
+        )
+        return htmllib.unescape(m.group(1)).strip() if m else ""
+
+    name = _meta("og:title") or _meta("twitter:title")
+    desc = _meta("og:description") or _meta("description") or _meta("twitter:description")
+    brand = _meta("product:brand") or _meta("og:brand")
+    price = _meta("product:price:amount") or _meta("og:price:amount")
+    currency = _meta("product:price:currency") or _meta("og:price:currency") or "TL"
+
+    # JSON-LD Product node — richer fields if present.
+    for m in re.finditer(
+        r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+        html, flags=re.DOTALL | re.IGNORECASE,
+    ):
+        try:
+            data = json.loads(m.group(1).strip())
+        except Exception:
+            continue
+        nodes = data if isinstance(data, list) else [data]
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            t = node.get("@type") or node.get("type") or ""
+            if isinstance(t, list):
+                t = t[0] if t else ""
+            if "Product" not in str(t):
+                continue
+            name = name or str(node.get("name") or "")
+            desc = desc or str(node.get("description") or "")
+            br = node.get("brand")
+            if isinstance(br, dict):
+                brand = brand or str(br.get("name") or "")
+            elif isinstance(br, str):
+                brand = brand or br
+            offers = node.get("offers")
+            if isinstance(offers, dict):
+                price = price or str(offers.get("price") or "")
+                currency = currency or str(offers.get("priceCurrency") or "TL")
+
+    if not name:
+        m = re.search(r"<title[^>]*>([^<]+)</title>", html, flags=re.IGNORECASE)
+        if m:
+            name = htmllib.unescape(m.group(1)).strip()
+
+    out = {
+        "product_name": name[:200],
+        "product_description": desc[:240],
+        "brand": brand[:120],
+        "price_text": (f"{price} {currency}".strip() if price else "")[:80],
+    }
+    return out
+
+
 # IMPORTANT: this route MUST be declared before the parameterized
 # `/{name}` routes below. FastAPI matches routes by declaration order and
 # would otherwise route `POST /products/fetch-from-url` to the
@@ -187,41 +270,45 @@ async def fetch_from_url(body: FetchFromUrlIn) -> FetchFromUrlOut:
         raise HTTPException(status_code=400, detail="invalid url")
 
     provider = get_llm_provider()
-    if isinstance(provider, MockProvider):
-        log.info("products.fetch_from_url.mock", url=url[:200])
-        return FetchFromUrlOut(
-            degraded=True,
-            degraded_reason="no_api_key",
-        )
+    resp = None
+    if not isinstance(provider, MockProvider):
+        try:
+            resp = await provider.generate(
+                system=_FETCH_SYSTEM_PROMPT,
+                messages=[LLMMessage(role="user", content=f"URL: {url}")],
+                temperature=0.2,
+                max_tokens=900,
+                grounding=["google_search"],
+            )
+        except Exception as exc:
+            log.warning("products.fetch_from_url.exception", url=url[:200], error=str(exc)[:200])
 
-    try:
-        resp = await provider.generate(
-            system=_FETCH_SYSTEM_PROMPT,
-            messages=[LLMMessage(role="user", content=f"URL: {url}")],
-            temperature=0.2,
-            max_tokens=900,
-            grounding=["google_search"],
-        )
-    except Exception as exc:
-        log.warning("products.fetch_from_url.exception", url=url[:200], error=str(exc)[:200])
-        return FetchFromUrlOut(degraded=True, degraded_reason="llm_exception")
+    data: dict[str, Any] = {}
+    if resp is not None and resp.text and not (resp.model or "").startswith("mock"):
+        data = _extract_json(resp.text)
 
-    if resp.error and not resp.text:
-        return FetchFromUrlOut(degraded=True, degraded_reason=(resp.error or "")[:200])
-
-    data = _extract_json(resp.text)
+    # Deterministic HTML scrape fallback — runs when the LLM call failed,
+    # was quota-degraded to mock, or returned an empty/unparseable payload.
+    if not data.get("product_name"):
+        scraped = await _scrape_product_html(url)
+        if scraped.get("product_name"):
+            log.info("products.fetch_from_url.scraped", url=url[:200], name=scraped.get("product_name", "")[:60])
+            data = {**scraped, **{k: v for k, v in data.items() if v}, "confidence": data.get("confidence") or 0.6}
     category = str(data.get("category") or "").strip()
     if category and category not in _CATEGORIES:
         # Best-effort normalisation: keep only categories the UI knows about.
         category = ""
 
-    meta = (resp.raw or {}).get("grounding_metadata") or {}
+    meta = ((resp.raw if resp else {}) or {}).get("grounding_metadata") or {}
     sources = [
         {"uri": str(s.get("uri") or ""), "title": str(s.get("title") or s.get("uri") or "")}
         for s in (meta.get("sources") or [])
         if isinstance(s, dict) and s.get("uri")
     ]
 
+    resp_model = (resp.model if resp else "") or ""
+    used_scraper = bool(data.get("product_name")) and (not resp_model or resp_model.startswith("mock"))
+    model_used = "scraper" if used_scraper else resp_model
     out = FetchFromUrlOut(
         product_name=str(data.get("product_name") or "")[:200],
         product_description=str(data.get("product_description") or "")[:240],
@@ -230,7 +317,7 @@ async def fetch_from_url(body: FetchFromUrlIn) -> FetchFromUrlOut:
         price_text=str(data.get("price_text") or "")[:80],
         confidence=float(data.get("confidence") or 0.0),
         sources=sources[:6],
-        model=resp.model or "",
+        model=model_used,
         degraded=not (data.get("product_name") or data.get("product_description")),
         degraded_reason=None if data else "parse_failed",
     )

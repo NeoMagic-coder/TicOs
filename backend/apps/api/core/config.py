@@ -27,9 +27,9 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5175",
     ]
 
-    # LLM provider selection: "gemini" | "openrouter" | "mock" | "" (auto-detect)
-    # Auto-detect order: OpenRouter (if key set) → Gemini (if key set) → Mock
-    llm_provider: str = ""
+    # LLM provider selection: "gemini" | "mock" | "" (auto-detect)
+    # Auto-detect order: Gemini (if GEMINI_API_KEY set) → Mock
+    llm_provider: str = "gemini"
 
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
@@ -40,11 +40,10 @@ class Settings(BaseSettings):
         "gemini-2.5-flash",
     ]
 
-    # OpenRouter — OpenAI-compatible endpoint, supports 300+ models.
-    # Set OPENROUTER_API_KEY and optionally OPENROUTER_MODEL to activate.
-    openrouter_api_key: str = ""
-    openrouter_model: str = "openai/gpt-4o-mini"
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # fal.ai — image generation fallback when Gemini quota is exhausted or
+    # billing is not enabled. Set FAL_API_KEY to activate.
+    fal_api_key: str = ""
+    fal_image_model: str = "fal-ai/flux/schnell"  # fast + cheap default
 
     # Max concurrent LLM requests (Gemini free tier RPM is tight).
     llm_max_concurrency: int = 2
@@ -62,7 +61,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///apps/api/data/app.db"
 
     # Vector memory
-    embedding_model: str = "text-embedding-004"  # Gemini, 768-dim
+    embedding_model: str = "gemini-embedding-001"  # 768-dim via output_dimensionality
     embedding_dim: int = 768
     memory_auto_write: bool = True
 
@@ -157,8 +156,6 @@ class Settings(BaseSettings):
     @field_validator(
         "gemini_api_key",
         "gemini_model",
-        "openrouter_api_key",
-        "openrouter_model",
         mode="before",
     )
     @classmethod

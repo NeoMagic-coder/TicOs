@@ -1,4 +1,4 @@
-"""LLM provider abstraction. Supports Gemini, OpenRouter, and a mock fallback."""
+"""LLM provider abstraction. Supports Gemini and a mock fallback."""
 from __future__ import annotations
 
 import asyncio
@@ -221,16 +221,21 @@ class GeminiProvider(LLMProvider):
                 )
             except genai_errors.ClientError as exc:
                 status = getattr(exc, "code", None) or getattr(exc, "status_code", None)
-                if status == 429 and attempt < max_attempts:
+                err_str = str(exc)
+                # Free-tier quota (limit: 0) is permanent for the day — don't
+                # waste 13-20s sleeping. Bail out immediately so the caller
+                # can move to the next fallback model or fall through to mock.
+                is_free_tier_zero = "limit: 0" in err_str or "FreeTier" in err_str
+                if status == 429 and attempt < max_attempts and not is_free_tier_zero:
                     delay = _extract_retry_delay(exc) or (2 ** attempt)
                     log.warning(
                         "gemini.rate_limited",
                         attempt=attempt, retry_in_s=delay, model=model,
                     )
                     LLM_REQUESTS.labels(provider="gemini", model=model, status="rate_limited").inc()
-                    await asyncio.sleep(min(delay, 20))
+                    await asyncio.sleep(min(delay, 8))
                     continue
-                log.warning("gemini.client_error", status=status, model=model, error=str(exc)[:200])
+                log.warning("gemini.client_error", status=status, model=model, error=err_str[:200])
                 LLM_REQUESTS.labels(provider="gemini", model=model, status="client_error").inc()
                 return LLMResponse(text="", error=f"Gemini {status} on {model}: {str(exc)[:200]}")
             except Exception as exc:
@@ -294,94 +299,6 @@ def _extract_retry_delay(exc: Exception) -> float | None:
     return None
 
 
-class OpenRouterProvider(LLMProvider):
-    """Calls OpenRouter via its OpenAI-compatible chat completions endpoint.
-
-    Supports 300+ models (openai/gpt-4o, anthropic/claude-3.5-sonnet, etc.).
-    Uses httpx for async HTTP — no extra SDK dependency beyond what's in requirements.txt.
-    """
-
-    def __init__(
-        self,
-        api_key: str,
-        model: str = "openai/gpt-4o-mini",
-        base_url: str = "https://openrouter.ai/api/v1",
-        max_concurrency: int = 4,
-    ) -> None:
-        self.model = model
-        self._url = base_url.rstrip("/") + "/chat/completions"
-        self._headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://oneproduct.ai",
-            "X-Title": "OneProduct Agent OS",
-        }
-        self._sem = asyncio.Semaphore(max(1, max_concurrency))
-
-    async def generate(
-        self,
-        *,
-        system: str,
-        messages: list[LLMMessage],
-        temperature: float = 0.7,
-        max_tokens: int = 1024,
-        grounding: list[str] | None = None,
-    ) -> LLMResponse:
-        import httpx
-
-        if grounding:
-            # OpenRouter's chat-completions surface has no equivalent of
-            # Gemini's tool grounding; we accept the arg for signature parity
-            # and emit a debug log so callers know it was a no-op.
-            log.debug("openrouter.grounding_noop", grounding=grounding)
-        payload_messages: list[dict] = []
-        if system:
-            payload_messages.append({"role": "system", "content": system})
-        for m in messages:
-            role = "assistant" if m.role in ("model", "assistant") else "user"
-            payload_messages.append({"role": role, "content": m.content})
-
-        payload = {
-            "model": self.model,
-            "messages": payload_messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-
-        tracer = get_tracer()
-        async with self._sem:
-            try:
-                with tracer.start_as_current_span(f"llm.openrouter.{self.model}") as span:
-                    span.set_attribute("llm.model", self.model)
-                    span.set_attribute("llm.provider", "openrouter")
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        resp = await client.post(self._url, headers=self._headers, json=payload)
-                    resp.raise_for_status()
-                    data = resp.json()
-                    text = (data["choices"][0]["message"]["content"] or "").strip()
-                    tokens = data.get("usage", {}).get("total_tokens", 0) or 0
-                    span.set_attribute("llm.tokens.total", tokens)
-                    LLM_REQUESTS.labels(provider="openrouter", model=self.model, status="success").inc()
-                    if tokens:
-                        LLM_TOKENS.labels(provider="openrouter", model=self.model).inc(tokens)
-                    return LLMResponse(
-                        text=text,
-                        tokens_used=tokens,
-                        model=data.get("model", self.model),
-                        raw=data,
-                    )
-            except httpx.HTTPStatusError as exc:
-                status = exc.response.status_code
-                body = exc.response.text[:300]
-                log.warning("openrouter.http_error", status=status, model=self.model, body=body)
-                LLM_REQUESTS.labels(provider="openrouter", model=self.model, status="error").inc()
-                return LLMResponse(text="", error=f"OpenRouter HTTP {status}: {body}")
-            except Exception as exc:
-                log.exception("openrouter.exception", model=self.model, error=str(exc))
-                LLM_REQUESTS.labels(provider="openrouter", model=self.model, status="error").inc()
-                return LLMResponse(text="", error=f"OpenRouter error: {exc}")
-
-
 class MockProvider(LLMProvider):
     """Deterministic-ish fake LLM used when no API key is configured.
 
@@ -425,9 +342,8 @@ def get_llm_provider() -> LLMProvider:
     """Return the configured LLM provider (singleton).
 
     Selection order:
-    1. Explicit ``LLM_PROVIDER`` env var ("gemini" | "openrouter" | "mock")
-    2. Auto-detect: OpenRouter if ``OPENROUTER_API_KEY`` is set, else Gemini if
-       ``GEMINI_API_KEY`` is set, else MockProvider.
+    1. Explicit ``LLM_PROVIDER`` env var ("gemini" | "mock")
+    2. Auto-detect: Gemini if ``GEMINI_API_KEY`` is set, else MockProvider.
     """
     global _provider
     if _provider is not None:
@@ -435,26 +351,9 @@ def get_llm_provider() -> LLMProvider:
     settings = get_settings()
 
     explicit = (settings.llm_provider or "").lower().strip()
-    use_openrouter = explicit == "openrouter" or (
-        not explicit and bool(settings.openrouter_api_key)
-    )
-    use_gemini = explicit == "gemini" or (
-        not explicit and bool(settings.gemini_api_key) and not use_openrouter
-    )
+    use_gemini = explicit == "gemini" or (not explicit and bool(settings.gemini_api_key))
 
-    if use_openrouter:
-        if not settings.openrouter_api_key:
-            log.warning("llm.provider.fallback_mock", reason="openrouter_key_missing")
-            _provider = MockProvider()
-        else:
-            _provider = OpenRouterProvider(
-                settings.openrouter_api_key,
-                settings.openrouter_model,
-                settings.openrouter_base_url,
-                max_concurrency=settings.llm_max_concurrency,
-            )
-            log.info("llm.provider.selected", provider="openrouter", model=settings.openrouter_model)
-    elif use_gemini:
+    if use_gemini:
         if not settings.gemini_api_key:
             log.warning("llm.provider.fallback_mock", reason="gemini_key_missing")
             _provider = MockProvider()

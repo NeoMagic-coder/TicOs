@@ -38,18 +38,29 @@ async def generate_image(body: GenerateImageRequest) -> dict[str, Any]:
     executor = get_executor()
     ctx = ExecutionContext(agent_id=body.agent_id, task_id=None, budget_usd=0.10)
 
+    # Guard against generic prompts producing off-brand stock imagery on
+    # non-Gemini providers (fal.ai/flux etc.) — if the caller forgot to
+    # mention the product name in the prompt, prepend it explicitly.
+    final_prompt = body.prompt.strip()
+    if body.product_name and body.product_name.lower() not in final_prompt.lower():
+        final_prompt = f'"{body.product_name}" ürünü: {final_prompt}'
+
     results: list[dict[str, Any]] = []
     for i in range(body.variations):
         try:
+            payload: dict[str, Any] = {
+                "prompt": final_prompt,
+                "variation_index": i,
+            }
+            if body.model:
+                payload["model"] = body.model
+            if body.product_name:
+                payload["product_name"] = body.product_name
             result = await executor.execute(
                 tool_id="brand_visual_generator",
-                payload={
-                    "prompt": body.prompt,
-                    "model": body.model,
-                    "variation_index": i,
-                    "product_name": body.product_name,
-                },
-                context=ctx,
+                agent_id=body.agent_id,
+                payload=payload,
+                ctx=ctx,
             )
         except ToolNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc))
@@ -61,7 +72,7 @@ async def generate_image(body: GenerateImageRequest) -> dict[str, Any]:
                 "cost_usd": result.cost_usd,
             }
         )
-    return {"variations": results, "prompt": body.prompt}
+    return {"variations": results, "prompt": final_prompt}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -160,29 +171,22 @@ async def regenerate_identity(body: RegenerateBrandRequest) -> dict[str, Any]:
     """Server-side BrandIdentity generation. Eliminates the need for the
     browser to hold `VITE_GEMINI_API_KEY`.
 
-    Provider priority:
-    1. Gemini (if GEMINI_API_KEY set) — uses response_mime_type for reliable JSON.
-    2. Generic LLM provider (OpenRouter etc.) — parses JSON from response text.
+    Uses Gemini with response_mime_type for reliable JSON output.
     """
     settings = get_settings()
     user_prompt = f"{_product_brief(body.product)}\n\n{_BRAND_SCHEMA_PROMPT}"
     system_prompt = "Sen Brand Identity Agent'sın. Yalnızca geçerli JSON üret, başka metin/yorum yazma."
 
-    # Respect explicit LLM_PROVIDER selection. Only use Gemini directly when
-    # the user hasn't picked OpenRouter — otherwise route through the generic
-    # provider below so the same model selection applies everywhere.
-    explicit_provider = (settings.llm_provider or "").lower().strip()
-    if settings.gemini_api_key and explicit_provider != "openrouter":
+    if settings.gemini_api_key:
         return await _regenerate_via_gemini(body, user_prompt, system_prompt, settings)
 
-    # Fall back to the generic provider (OpenRouter, etc.)
     from apps.api.core.llm.provider import LLMMessage, MockProvider, get_llm_provider
 
     provider = get_llm_provider()
     if isinstance(provider, MockProvider):
         raise HTTPException(
             status_code=503,
-            detail="LLM API anahtarı yapılandırılmamış (GEMINI_API_KEY veya OPENROUTER_API_KEY gerekli)",
+            detail="LLM API anahtarı yapılandırılmamış (GEMINI_API_KEY gerekli)",
         )
 
     try:

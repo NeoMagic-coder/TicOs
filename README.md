@@ -64,32 +64,152 @@ Geniş Bağlam Penceresi (Context Window): Gemini 1.5 Pro'nun sunduğu devasa ba
 
 Çoklu Modallık (Multimodality): Sistem sadece metin tabanlı verileri değil; ürün görsellerini, infografikleri ve rakip reklam tasarımlarını da Gemini üzerinden analiz ederek görsel trend takibi gerçekleştirebilir.
 
-⚙️ Kurulum ve Çalıştırma
-Projeyi yerel ortamınızda ayağa kaldırmak için aşağıdaki adımları takip edin:
+## ⚙️ Kurulum ve Çalıştırma
 
-1. Depoyu Klonlayın
-Bash
-git clone [https://github.com/NeoMagic-coder/OneProduct-Agent-OS.git](https://github.com/NeoMagic-coder/OneProduct-Agent-OS.git)
+Proje iki bölümden oluşur: **backend** (FastAPI, port 8000) ve **frontend** (Vite + React, port 5173). Aşağıda her işletim sistemi için kurulum adımları bulunmaktadır.
+
+### Ön Koşullar (Tüm Platformlar)
+
+- **Python** 3.11 veya üzeri
+- **Node.js** 18 veya üzeri (LTS önerilir)
+- **Git**
+- Bir **Gemini API Key** ([aistudio.google.com/apikey](https://aistudio.google.com/apikey))
+
+### 1. Depoyu Klonla (Ortak)
+
+```bash
+git clone https://github.com/NeoMagic-coder/OneProduct-Agent-OS.git
 cd OneProduct-Agent-OS
-2. Çevresel Değişkenleri Ayarlayın
-Projenin ana dizininde bir .env dosyası oluşturun ve gerekli API anahtarlarınızı ekleyin:
+```
 
-Kod snippet'i
-GEMINI_API_KEY=your_gemini_api_key_here
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=your_langchain_api_key_here
-DATABASE_URL=your_database_url
-3. Bağımlılıkları Yükleyin
-Bash
-# Pip ile kurulum için:
-pip install -r requirements.txt
+### 2. Ortam Değişkenleri (Ortak)
 
-# veya Poetry kullanıyorsanız:
-poetry install
-4. Uygulamayı Başlatın
-Bash
-python main.py
-(Eğer FastAPI interface kullanıyorsanız: uvicorn app.main:app --reload)
+`backend/.env.local` dosyasını oluştur:
+
+```env
+GEMINI_API_KEY=AIza...
+GEMINI_MODEL=gemini-2.5-flash
+VITE_GEMINI_API_KEY=AIza...
+VITE_GEMINI_MODEL=gemini-2.5-flash
+LLM_PROVIDER=gemini
+```
+
+---
+
+### 🍎 macOS
+
+```bash
+# Python ve Node yoksa Homebrew ile kur
+brew install python@3.12 node git
+
+# Backend
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r apps/api/requirements.txt
+uvicorn apps.api.main:app --reload --port 8000
+```
+
+Yeni bir terminal sekmesinde:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Veya repo kökünden her ikisini birden başlatmak için:
+
+```bash
+scripts/dev.sh
+```
+
+---
+
+### 🐧 Linux (Ubuntu / Debian)
+
+```bash
+# Gerekli paketler
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip nodejs npm git
+
+# Backend
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r apps/api/requirements.txt
+uvicorn apps.api.main:app --reload --port 8000
+```
+
+Yeni bir terminalde:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+> **Not:** Eski dağıtımlarda Node sürümü düşükse [NodeSource](https://github.com/nodesource/distributions) veya `nvm` ile güncel sürümü kur.
+
+---
+
+### 🪟 Windows (PowerShell)
+
+```powershell
+# Python ve Node yoksa winget ile kur
+winget install Python.Python.3.12
+winget install OpenJS.NodeJS.LTS
+winget install Git.Git
+
+# Backend
+cd backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r apps\api\requirements.txt
+uvicorn apps.api.main:app --reload --port 8000
+```
+
+> Eğer `Activate.ps1` engellenirse PowerShell'i **Yönetici** olarak açıp şunu çalıştır:
+> ```powershell
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ```
+
+Yeni bir PowerShell penceresinde:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+> **Stale env değişkeni uyarısı:** Backend "API key not valid" diye şikayet ederse sistemde eski bir `GEMINI_API_KEY` ortam değişkeni gölgeliyor olabilir. Temizle:
+> ```powershell
+> Remove-Item Env:GEMINI_API_KEY
+> ```
+
+---
+
+### Erişim
+
+Servisler ayağa kalktıktan sonra:
+
+- **Frontend:** http://localhost:5173
+- **Backend API:** http://localhost:8000
+- **Swagger Docs:** http://localhost:8000/docs
+
+### Testler
+
+```bash
+# Backend testleri (backend/ dizininden)
+pytest apps/api/tests -q
+
+# Frontend E2E testleri (frontend/ dizininden)
+npx playwright install chromium  # ilk seferde
+npm run test:e2e
+
+# Tam doğrulama (tsc + vite build + pytest)
+scripts/check.sh
+```
 
 🤝 Katkıda Bulunma (Contributing)
 Bu depoyu çatallayın (Fork).

@@ -22,7 +22,6 @@ from apps.api.core.llm.provider import (
     GeminiProvider,
     LLMProvider,
     MockProvider,
-    OpenRouterProvider,
     get_llm_provider,
 )
 from apps.api.core.logging import get_logger
@@ -63,35 +62,6 @@ def _build(cfg: AgentLLMConfigRow) -> LLMProvider | None:
             key,
             cfg.model or settings.gemini_model,
             fallback_models=settings.gemini_fallback_models,
-            max_concurrency=settings.llm_max_concurrency,
-        )
-
-    if provider == "openrouter":
-        key = api_key or settings.openrouter_api_key
-        if not key:
-            log.warning("per_agent.openrouter.no_key", agent=cfg.agent_id)
-            return None
-        return OpenRouterProvider(
-            key,
-            cfg.model or settings.openrouter_model,
-            cfg.base_url or settings.openrouter_base_url,
-            max_concurrency=settings.llm_max_concurrency,
-        )
-
-    if provider == "openai_compatible":
-        # Any OpenAI-compatible chat-completions endpoint (raw OpenAI, Groq,
-        # Together, DeepSeek, local Ollama, vLLM, etc.). Reuses
-        # OpenRouterProvider because it speaks the same wire protocol.
-        if not cfg.base_url:
-            log.warning("per_agent.openai_compat.no_base_url", agent=cfg.agent_id)
-            return None
-        if not cfg.model:
-            log.warning("per_agent.openai_compat.no_model", agent=cfg.agent_id)
-            return None
-        return OpenRouterProvider(
-            api_key or "",  # some local servers accept empty
-            cfg.model,
-            cfg.base_url,
             max_concurrency=settings.llm_max_concurrency,
         )
 
@@ -190,6 +160,4 @@ def describe_for_agent(agent_id: str) -> ResolvedProvider:
     # Fall back to global resolution
     if (settings.llm_provider or "").lower() == "gemini" or (not settings.llm_provider and settings.gemini_api_key):
         return ResolvedProvider("gemini", settings.gemini_model, "", "GEMINI_API_KEY", bool(settings.gemini_api_key))
-    if (settings.llm_provider or "").lower() == "openrouter" or (not settings.llm_provider and settings.openrouter_api_key):
-        return ResolvedProvider("openrouter", settings.openrouter_model, settings.openrouter_base_url, "OPENROUTER_API_KEY", bool(settings.openrouter_api_key))
     return ResolvedProvider("mock", "mock", "", "", False)
