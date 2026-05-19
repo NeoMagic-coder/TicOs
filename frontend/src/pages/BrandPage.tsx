@@ -76,7 +76,32 @@ const BrandPage = () => {
       pushToast({ kind: 'warn', title: 'Ürün yok', body: 'Önce bir ürün onboard et.' });
       return;
     }
-    const finalPrompt = prompt || `${product.product_name} için stüdyo kalitesinde lifestyle görseli`;
+    // Build a rich default prompt that anchors the image generator on the
+    // actual brand identity (name, tagline, palette, archetype, mood, category)
+    // — otherwise non-Gemini fallbacks like fal.ai/flux produce unrelated stock imagery.
+    const brandName: string = brand?.brand_name || product.product_name || '';
+    const tagline: string = brand?.tagline || '';
+    const archetype: string = brand?.archetype || '';
+    const story: string = brand?.story || '';
+    const mood: string = brand?.imagery_style?.mood || brand?.imagery_style?.style || '';
+    const paletteHex = (paletteFull || []).slice(0, 4).map((p: any) => p.hex).filter(Boolean).join(', ');
+    const category: string = product.category || '';
+    const description: string = product.product_description || '';
+    const brandBits = [
+      brandName && `"${brandName}" markası`,
+      tagline && `slogan: "${tagline}"`,
+      archetype && `marka arketipi: ${archetype}`,
+      mood && `görsel ton: ${mood}`,
+      paletteHex && `renk paleti: ${paletteHex}`,
+      category && `kategori: ${category}`,
+      description && `ürün: ${description}`,
+      story && `marka hikayesi özet: ${story.slice(0, 160)}`,
+    ].filter(Boolean).join(' | ');
+    const userPart = prompt.trim();
+    const basePart = userPart || `${product.product_name} için stüdyo kalitesinde, premium lifestyle ürün görseli`;
+    const finalPrompt = brandBits
+      ? `${basePart}. ${brandBits}. Yüksek çözünürlüklü, profesyonel ışıklandırma, marka kimliğine birebir sadık kal.`
+      : basePart;
     setGenerating(true);
     try {
       const res = await fetch(`${BASE_URL}/api/v1/brand/generate-image`, {

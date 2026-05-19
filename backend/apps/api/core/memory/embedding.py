@@ -1,8 +1,9 @@
 """Embedding helper for the vector memory.
 
-Uses Gemini's ``text-embedding-004`` (768-dim) when ``GEMINI_API_KEY`` is set;
-otherwise returns a deterministic hash-based mock embedding so tests and
-no-key dev environments can still write/search the memory table.
+Uses Gemini's ``gemini-embedding-001`` with ``output_dimensionality=768`` to
+keep the pgvector schema (768-dim) compatible; falls back to a deterministic
+hash-based mock embedding when no ``GEMINI_API_KEY`` is configured or the
+API call fails.
 """
 from __future__ import annotations
 
@@ -25,15 +26,20 @@ async def embed_text(text: str) -> list[float]:
     if settings.gemini_api_key:
         try:
             from google import genai
+            from google.genai import types
 
             client = genai.Client(api_key=settings.gemini_api_key)
             result = await client.aio.models.embed_content(
                 model=settings.embedding_model,
                 contents=text,
+                config=types.EmbedContentConfig(output_dimensionality=dim),
             )
             vec = list(result.embeddings[0].values)
             if len(vec) == dim:
-                return vec
+                # gemini-embedding-001 only normalizes the full 3072-dim output;
+                # truncated dims must be L2-normalized client-side.
+                norm = math.sqrt(sum(v * v for v in vec)) or 1.0
+                return [v / norm for v in vec]
             log.warning("embedding.dim_mismatch", expected=dim, got=len(vec))
         except Exception as exc:
             log.warning("embedding.gemini_failed", error=str(exc)[:200])

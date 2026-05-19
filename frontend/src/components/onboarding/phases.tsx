@@ -99,15 +99,15 @@ function ReferenceUrlBlock({ draft, update }: { draft: Draft; update: Update }) 
       const data = await fetchProductFromUrl(url);
       const filled: string[] = [];
       const patch: Draft = {};
-      if (data.product_name && !draft.product_name) {
+      if (data.product_name) {
         patch.product_name = data.product_name;
         filled.push('name');
       }
-      if (data.product_description && !draft.product_description) {
+      if (data.product_description) {
         patch.product_description = data.product_description;
         filled.push('desc');
       }
-      if (data.category && !draft.category && CATEGORIES.includes(data.category)) {
+      if (data.category && CATEGORIES.includes(data.category)) {
         patch.category = data.category;
         filled.push('cat');
       }

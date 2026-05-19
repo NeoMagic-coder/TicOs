@@ -124,16 +124,19 @@ def _row_to_llm_config(row: AgentLLMConfigRow) -> AgentLLMConfig:
     env_name = (row.api_key_env or "").strip()
     if env_name == "GEMINI_API_KEY":
         api_key_present = bool(settings.gemini_api_key)
-    elif env_name == "OPENROUTER_API_KEY":
-        api_key_present = bool(settings.openrouter_api_key)
     elif env_name:
         api_key_present = bool(os.environ.get(env_name, ""))
     else:
         api_key_present = False
+    raw_provider = (row.provider or "gemini").strip().lower()
+    provider = raw_provider if raw_provider in ("gemini", "mock") else "gemini"
+    # Strip any legacy non-Gemini model ids (e.g. "anthropic/claude-3.5-haiku")
+    raw_model = (row.model or "").strip()
+    model = raw_model if (not raw_model or raw_model.startswith("gemini") or provider == "mock") else ""
     return AgentLLMConfig(
         agent_id=row.agent_id,
-        provider=row.provider or "openrouter",  # type: ignore[arg-type]
-        model=row.model or "",
+        provider=provider,  # type: ignore[arg-type]
+        model=model,
         base_url=row.base_url or "",
         api_key_env=row.api_key_env or "",
         temperature=float(row.temperature or 0.7),

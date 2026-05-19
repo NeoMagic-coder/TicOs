@@ -317,7 +317,7 @@ def create_app() -> FastAPI:
             "llm": type(get_llm_provider()).__name__.replace("Provider", "").lower(),
             "_dbg_provider_class": type(get_llm_provider()).__name__,
             "_dbg_llm_provider_setting": get_settings().llm_provider,
-            "_dbg_openrouter_key_set": bool(get_settings().openrouter_api_key),
+            "_dbg_gemini_key_set": bool(get_settings().gemini_api_key),
         }
 
     return app

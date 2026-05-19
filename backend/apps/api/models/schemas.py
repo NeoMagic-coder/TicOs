@@ -288,7 +288,7 @@ class AgentLLMConfig(BaseModel):
     """Per-agent LLM model + provider override (serialised form)."""
 
     agent_id: str
-    provider: Literal["gemini", "openrouter", "openai_compatible", "mock"] = "openrouter"
+    provider: Literal["gemini", "mock"] = "gemini"
     model: str = ""
     base_url: str = ""
     api_key_env: str = ""
@@ -302,7 +302,7 @@ class AgentLLMConfig(BaseModel):
 
 
 class AgentLLMConfigUpdate(BaseModel):
-    provider: Literal["gemini", "openrouter", "openai_compatible", "mock"] = "openrouter"
+    provider: Literal["gemini", "mock"] = "gemini"
     model: str = ""
     base_url: str = ""
     api_key_env: str = ""

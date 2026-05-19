@@ -10,7 +10,7 @@ import { useStore } from '@/stores/useStore';
 import { AGENT_BY_ID } from '@/data/aos/mockData';
 
 type Provider = {
-  id: 'gemini' | 'openrouter' | 'openai_compatible' | 'mock';
+  id: 'gemini' | 'mock';
   label: string;
   requires_base_url: boolean;
   default_base_url: string;
@@ -43,25 +43,15 @@ type TestResp = {
   error: string | null;
 };
 
-type OpenRouterModel = {
-  id: string;
-  name: string;
-  context_length: number | null;
-  pricing_prompt: string | null;
-  pricing_completion: string | null;
-};
-
 const Row = ({
   agentId,
   initial,
   providers,
-  openrouterModels,
   onSaved,
 }: {
   agentId: string;
   initial: AgentLLMConfig;
   providers: Provider[];
-  openrouterModels: OpenRouterModel[];
   onSaved: (cfg: AgentLLMConfig) => void;
 }) => {
   const a = AGENT_BY_ID?.[agentId];
@@ -185,19 +175,27 @@ const Row = ({
               style={{ background: 'var(--bg-0)', border: '1px solid var(--border)', color: 'var(--fg-1)', padding: '4px 6px', borderRadius: 3, fontSize: 11 }}
             />
             <datalist id={`models-${agentId}`}>
-              {draft.provider === 'openrouter' && openrouterModels.length > 0
-                ? openrouterModels.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)
-                : prov?.suggested_models.map((m) => <option key={m} value={m} />)}
+              {prov?.suggested_models.map((m) => <option key={m} value={m} />)}
             </datalist>
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ fontSize: 9, color: 'var(--fg-3)' }}>API Key env</span>
-            <input
-              value={draft.api_key_env}
-              onChange={(e) => setDraft({ ...draft, api_key_env: e.target.value })}
-              placeholder={prov?.default_api_key_env || 'OPENROUTER_API_KEY'}
-              style={{ background: 'var(--bg-0)', border: '1px solid var(--border)', color: 'var(--fg-1)', padding: '4px 6px', borderRadius: 3, fontSize: 11 }}
-            />
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input
+                value={draft.api_key_env}
+                onChange={(e) => setDraft({ ...draft, api_key_env: e.target.value })}
+                placeholder={prov?.default_api_key_env || 'GEMINI_API_KEY'}
+                style={{ flex: 1, background: 'var(--bg-0)', border: '1px solid var(--border)', color: 'var(--fg-1)', padding: '4px 6px', borderRadius: 3, fontSize: 11 }}
+              />
+              <button
+                type="button"
+                onClick={() => setDraft({ ...draft, api_key_env: 'GEMINI_API_KEY' })}
+                title="GEMINI_API_KEY otomatik doldur"
+                style={{ background: 'var(--bg-0)', border: '1px solid var(--border)', color: 'var(--fg-2)', padding: '4px 8px', borderRadius: 3, fontSize: 10, cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                Auto
+              </button>
+            </div>
           </label>
         </div>
 
@@ -268,7 +266,7 @@ const Row = ({
 
 const emptyCfg = (agentId: string): AgentLLMConfig => ({
   agent_id: agentId,
-  provider: 'openrouter',
+  provider: 'gemini',
   model: '',
   base_url: '',
   api_key_env: '',
@@ -283,17 +281,15 @@ const LLMConfigPage = () => {
   const agents = useStore((s: any) => s.agents);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [configs, setConfigs] = useState<Record<string, AgentLLMConfig>>({});
-  const [openrouterModels, setOpenrouterModels] = useState<OpenRouterModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [provRes, cfgRes, orRes] = await Promise.all([
+      const [provRes, cfgRes] = await Promise.all([
         fetch(`${BASE_URL}/api/v1/llm/providers`, { headers: backendHeaders() }),
         fetch(`${BASE_URL}/api/v1/agents/llm-configs`, { headers: backendHeaders() }),
-        fetch(`${BASE_URL}/api/v1/llm/openrouter/models`, { headers: backendHeaders() }),
       ]);
       if (!provRes.ok) throw new Error(`providers HTTP ${provRes.status}`);
       if (!cfgRes.ok) throw new Error(`configs HTTP ${cfgRes.status}`);
@@ -303,10 +299,6 @@ const LLMConfigPage = () => {
       const map: Record<string, AgentLLMConfig> = {};
       for (const c of cfgList) map[c.agent_id] = c;
       setConfigs(map);
-      if (orRes.ok) {
-        const orBody = await orRes.json();
-        setOpenrouterModels(orBody?.models || []);
-      }
       setError(null);
     } catch (e: any) {
       setError(String(e?.message || e));
@@ -323,10 +315,43 @@ const LLMConfigPage = () => {
 
   const enabledCount = Object.values(configs).filter((c) => c.enabled).length;
 
+  const applyGeminiKeyToAll = async () => {
+    const targets = agents.map((a: any) => a.id || a.agent_id);
+    let ok = 0;
+    let fail = 0;
+    for (const id of targets) {
+      const cur = configs[id] || emptyCfg(id);
+      try {
+        const res = await fetch(`${BASE_URL}/api/v1/agents/${id}/llm-config`, {
+          method: 'PUT',
+          headers: backendHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            provider: 'gemini',
+            model: cur.model || 'gemini-2.5-flash',
+            base_url: cur.base_url || '',
+            api_key_env: 'GEMINI_API_KEY',
+            temperature: cur.temperature,
+            max_tokens: cur.max_tokens,
+            enabled: cur.enabled,
+          }),
+        });
+        if (res.ok) {
+          ok++;
+        } else {
+          fail++;
+        }
+      } catch {
+        fail++;
+      }
+    }
+    await refresh();
+    alert(`GEMINI_API_KEY toplu uygulandı: ${ok} başarılı, ${fail} hata`);
+  };
+
   return (
     <div className="page">
       <div className="page__breadcrumb mono">HOME <span>›</span> LLM MODELLERİ</div>
-      <div className="page__header">
+      <div className="page__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div>
           <h1 className="page__title">Per-Agent LLM Modelleri</h1>
           <p className="page__sub">
@@ -334,6 +359,14 @@ const LLMConfigPage = () => {
             {' '}{enabledCount}/{agents.length} ajan özel modele bağlı.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => { void applyGeminiKeyToAll(); }}
+          title="Tüm ajanların API Key env değerini GEMINI_API_KEY yap"
+          style={{ background: 'var(--accent, #10b981)', border: 'none', color: '#fff', padding: '8px 12px', borderRadius: 4, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
+        >
+          GEMINI_API_KEY'i tümüne uygula
+        </button>
       </div>
 
       {!loading && providers.length > 0 && (
@@ -342,9 +375,6 @@ const LLMConfigPage = () => {
             {providers.map((p) => (
               <span key={p.id} style={{ color: p.api_key_present ? '#10b981' : 'var(--fg-3)' }}>
                 {p.api_key_present ? '●' : '○'} {p.label}
-                {p.id === 'openrouter' && openrouterModels.length > 0 && (
-                  <span style={{ color: 'var(--fg-3)' }}> · {openrouterModels.length} model</span>
-                )}
               </span>
             ))}
           </div>
@@ -362,7 +392,6 @@ const LLMConfigPage = () => {
             agentId={id}
             initial={configs[id] || emptyCfg(id)}
             providers={providers}
-            openrouterModels={openrouterModels}
             onSaved={handleSaved}
           />
         );
