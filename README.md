@@ -5,12 +5,7 @@
 https://github.com/user-attachments/assets/18a0610f-4d7d-4487-bbad-29c8a21c746b
 
 
-
- 
-
-Uploading Adsız 2.mov…
-
-
+https://github.com/user-attachments/assets/e2f84ab2-993c-4ebc-9dbd-8d91b1e03604
 
 
 [![Gemini API](https://img.shields.io/badge/Powered%20by-Gemini%20API-blue)](https://ai.google.dev/)
