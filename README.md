@@ -7,11 +7,7 @@ https://github.com/user-attachments/assets/18a0610f-4d7d-4487-bbad-29c8a21c746b
 
 https://github.com/user-attachments/assets/e2f84ab2-993c-4ebc-9dbd-8d91b1e03604
 
-
-[![Gemini API](https://img.shields.io/badge/Powered%20by-Gemini%20API-blue)](https://ai.google.dev/)
-[![LangChain](https://img.shields.io/badge/Framework-LangChain-green)](https://www.langchain.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
+ 
 **OneProduct-Agent-OS**, karmaşık e-ticaret süreçlerini, ürün yönetimini ve pazar analizi operasyonlarını tek bir otonom yapay zeka işletim sistemi (Agentic OS) altında birleştiren yeni nesil bir ajan platformudur. 
 
 ---
