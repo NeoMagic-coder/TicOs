@@ -2,9 +2,7 @@
 
 
 
-https://github.com/user-attachments/assets/18a0610f-4d7d-4487-bbad-29c8a21c746b
-
-https://github.com/user-attachments/assets/e2f84ab2-993c-4ebc-9dbd-8d91b1e03604
+ 
 
 **TicOs** (TicOsClaw), tek ürün etrafında dönen e-ticaret operasyonlarını otonom ajan iş akışlarına dönüştüren çoklu-ajan yapay zeka işletim sistemidir. Hermes orkestratörü, OpenClaw araç katmanı, otonomi modülü ve TIC (sipariş/envanter) entegrasyonu ile pazar analizi, fiyatlandırma, stok, pazarlama ve müşteri operasyonlarını tek panelden yönetir.
 
