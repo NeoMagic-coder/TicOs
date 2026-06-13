@@ -1,6 +1,6 @@
 # TicOs 🦞
 
-<img width="2752" height="1536" alt="TicOsClaw" src="https://github.com/user-attachments/assets/a2ab8538-b636-4554-8a1d-a4c7e551caa4" />
+
 
 https://github.com/user-attachments/assets/18a0610f-4d7d-4487-bbad-29c8a21c746b
 
