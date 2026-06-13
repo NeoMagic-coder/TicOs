@@ -14,7 +14,7 @@
 E-ticaret verileri pazar analizi, rakip takibi, stok, müşteri geri bildirimleri ve pazarlama kanallarına dağılmış durumda. İnsan yönetimli süreçler gecikme, yanlış fiyatlandırma ve kaçırılan trendlere yol açar.
 
 ### Çözüm
-TicOs, dağınık süreçleri otonom iş akışlarına dönüştürür: 26 uzman ajan, 90 araç manifesti, policy-gated otonomi katmanı ve canlı SSE/voice supervisor ile 7/24 optimize operasyon sağlar.
+TicOs, dağınık süreçleri otonom iş akışlarına dönüştürür: 22 uzman ajan, 98 araç manifesti, policy-gated otonomi katmanı ve canlı SSE/voice supervisor ile 7/24 optimize operasyon sağlar.
 
 ---
 
@@ -24,7 +24,7 @@ TicOs, dağınık süreçleri otonom iş akışlarına dönüştürür: 26 uzman
 Kullanıcı / API / Voice / Extension
            │
            ▼
-    Hermes Orkestratör ──► TaskGraph (DAG) ──► Ajanlar (26)
+    Hermes Orkestratör ──► TaskGraph (DAG) ──► Ajanlar (22)
            │                                      │
            │                                      ▼
            │                              OpenClaw Executor
@@ -63,8 +63,8 @@ Kullanıcı / API / Voice / Extension
 
 ### Kayıt Sayıları
 
-- **26 ajan** — 22 çekirdek + 4 otonomi ajanı
-- **90 araç manifesti** — 46 live, 44 mock
+- **22 ajan** — seed registry (4 tanesi otonomi katmanı)
+- **98 araç manifesti** — 57 live, 41 mock
 - **5 org birimi** — yönetim, pazarlama, operasyon, finans, AR-GE
 
 ---

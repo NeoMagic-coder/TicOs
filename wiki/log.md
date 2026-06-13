@@ -24,3 +24,10 @@ Bu dosya append-only işlem günlüğüdür. Eski girdiler düzenlenmez veya sil
 - **Result:** Mevcut proje mimarisi wiki'si ile Karpathy LLM Wiki şeması aynı Obsidian vault içinde birleşti
 - **Open questions:** Proje kod ingest'i için skima ile LLM-WIKI-AGENTS arasındaki sınır net; dış kaynaklar LLM Wiki, kod değişiklikleri 10-Mimari-Notlar
 
+## [2026-06-13] ingest | Kod tabanı wiki senkronizasyonu
+
+- **Input:** TicOsClaw repo güncel durumu (sayımlar, OpenRouter, TIC manifest, frontend sayfaları)
+- **Changes:** `İndeks`, `Proje Genel Bakış`, `Tool Manifest Registry`, `Frontend Mimarisi`, `Frontend API Katmanı`, `LLM Provider Layer`, `AutoResearch-Tasarimi`, `Agent Mesaj Veriyolu`; yeni `Frontend Sayfalar`, `Environment & API Keys`; README + AGENTS.md + CLAUDE.md sayımları
+- **Result:** Wiki sayımları 98 tool / 57 live / 41 mock / 17 manifest; OneProduct → TicOs markası; eksik indeks linkleri giderildi
+- **Open questions:** `inventory_forecast_agent` tic_inventory manifest'inde referans var ama seed'de henüz yok
+

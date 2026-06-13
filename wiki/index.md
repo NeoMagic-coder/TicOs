@@ -28,7 +28,9 @@ Henüz analiz sayfası yok.
 
 ## Project Architecture (TicOsClaw skima)
 
-- [[wiki/İndeks|İndeks]] — Hermes, OpenClaw, ajanlar, API ve frontend mimari haritası.
+- [[wiki/İndeks|İndeks]] — TicOs mimari haritası (Hermes, OpenClaw, ajanlar, API, frontend).
 - [[wiki/skima|skima]] — Otonom wiki operasyon rehberi (ingest / query / lint).
 - [[wiki/10-Mimari-Notlar/Proje Genel Bakış|Proje Genel Bakış]] — Tek sayfalık platform özeti.
+- [[wiki/10-Mimari-Notlar/Frontend Sayfalar|Frontend Sayfalar]] — 21 aktif route/bileşen.
+- [[wiki/10-Mimari-Notlar/Environment & API Keys|Environment & API Keys]] — OpenRouter + Gemini env.
 

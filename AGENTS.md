@@ -239,8 +239,8 @@ Worked example: `restock_alert_builder` (yeni `stock` aracı,
   `logistics_agent`, `dynamic_pricing_agent`, `autonomous_decision_agent`.
 - **Org units**: 5 departments (`yonetim`, `pazarlama`, `operasyon`,
   `finans`, `arge`) with 22 memberships seeded by `seed_default_org()`.
-- **Tool manifests**: 16 JSON files under `apps/api/tools/manifests/`,
-  90 manifest entries total (46 `live`, 44 `mock`). Live adapters live in
+- **Tool manifests**: 17 JSON files under `apps/api/tools/manifests/`,
+  98 manifest entries total (57 `live`, 41 `mock`). Live adapters live in
   `apps/api/tools/live/`:
   - **External integrations**: Shopify Admin REST (3), Trendyol Partner API
     (4: get_products, get_orders, update_price, create_listing),

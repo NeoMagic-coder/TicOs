@@ -4,7 +4,7 @@
 
 ## Yapı
 - `App.tsx` + `main.tsx` — entry.
-- `pages/` — 17 sayfa. Bkz. [[Frontend Sayfalar]].
+- `pages/` — 21 aktif sayfa. Bkz. [[Frontend Sayfalar]].
 - `components/` — `Layout`, `Sidebar`, `ChatCommandBar`, `ChatMessageBody`, `ProductContextBar`, `SlashCommandMenu`, `SupervisorChatDock`, `VoiceDock` + `AOS/`, `onboarding/`.
 - `stores/useStore.ts` — **tek Zustand store**. Sayfalar bunun üzerinde ince view.
 - `lib/api.ts` — backend istemcisi. [[Frontend API Katmanı]].
@@ -16,5 +16,6 @@
 - Path alias: `@` → `src/`.
 
 ## Önemli Notlar
-- Frontend mevcut durumda Gemini'yi **doğrudan tarayıcıdan** çağırabiliyor (güvenlik notu README'de). Prototip; prod akışları backend'e gitmeli.
+- LLM anahtarı bundle'a gömülmez; tamamlamalar backend `/api/v1/llm/generate` proxy'sinden geçer.
+- Dev-only tarayıcı fallback: `VITE_ENABLE_BROWSER_LLM_FALLBACK` veya `import.meta.env.DEV`.
 - E2E test: Playwright (`tests/e2e/`).

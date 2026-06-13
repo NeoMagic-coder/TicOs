@@ -33,4 +33,4 @@ Detaylı plan + Faz 2/3 önerileri: [[Agent-Iletisim-ve-Otonom-Calisma]] (`20-Pr
 - [[OpenClaw Tool Layer]] — tool sarmalı.
 - [[Autonomy Layer]] — `coordination.py` ileride bu bus üzerine taşınabilir.
 - [[Hermes Orkestratör]] — `handoff_bridge.py` ile `delegate_subtask` → DAG node injection (Faz 1.5 ✅).
-- [[Tool Manifest Registry]] — sayım: 91 tool (47 live + 44 mock).
+- [[Tool Manifest Registry]] — sayım: 98 tool (57 live + 41 mock).

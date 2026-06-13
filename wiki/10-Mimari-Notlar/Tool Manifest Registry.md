@@ -2,15 +2,16 @@
 
 **Konum:** `backend/apps/api/tools/manifests/` (JSON) + `backend/apps/api/tools/live/` (Python adapters).
 
-## Sayım (CLAUDE.md ile senkron)
-- **16 manifest dosyası**, **91 tool kaydı** (47 live + 44 mock).
-- Yeni: `agent_handoff` (coordination kategorisi) — bkz. [[Agent Mesaj Veriyolu (A2A)]].
+## Sayım (README / AGENTS.md ile senkron)
+- **17 manifest dosyası**, **98 tool kaydı** (57 live + 41 mock).
+- Son eklenen küme: `tic_inventory.json` (5 live — TIC envanter/sipariş araçları).
 
 ## Manifest Dosyaları
-`analytics_legal`, `autonomous_layer`, `brand_pricing`, `brand_visual`, `collectapi`, `fakestore`, `ga4_live`, `growth_review_email`, `influencer_pr`, `marketing_content`, `memory`, `ops_support`, `research`, `shopify_live`, `store_catalog`, `trendyol_live`.
+`analytics_legal`, `autonomous_layer`, `brand_pricing`, `brand_visual`, `collectapi`, `fakestore`, `ga4_live`, `growth_review_email`, `influencer_pr`, `marketing_content`, `memory`, `ops_support`, `research`, `shopify_live`, `store_catalog`, `tic_inventory`, `trendyol_live`.
 
 ## Live Adapter Kategorileri
 - **External integrations:** Shopify Admin REST (3), Trendyol Partner API (4), GA4 Data API (2), FakeStoreAPI (5), CollectAPI (6 — shopping, multi-site price, FX, BIST), Gemini Image/Vision, pgvector memory, competitor scan, subagent runner, `web_search_grounded` (Gemini `googleSearch`).
+- **TIC inventory:** `tic_product_list`, `tic_stock_check`, `tic_order_list`, `tic_order_create`, `tic_customer_lookup` (`tic_inventory.json`).
 - **LLM-only (Gemini)** — `llm_tools.py` (9 araç): brand_name, color_palette, persona, sentiment, draft_reply, review_response, email_sequence, listing_compliance, forbidden_word_scanner. `GEMINI_API_KEY` yoksa `degraded=True` ile deterministik fallback.
 - **Deterministic compute** — `compute_tools.py` (10 araç): margin, cogs, campaign_discount, autonomy_policy_check, stock_forecast, ab_test_designer, niche_scorer, trend_detector, anomaly_detector, return_policy_generator. Pure Python.
 
@@ -23,7 +24,7 @@
 4. Manifest'te `"mode": "live"` veya `"mock"`.
 5. Test: `test_registry.py` + `test_openclaw.py`.
 
-> README ve CLAUDE.md'deki sayım satırını güncellemeyi unutma.
+> README ve AGENTS.md'deki sayım satırını güncellemeyi unutma.
 
 ## İlgili
 - [[OpenClaw Tool Layer]] — çağrı katmanı.
