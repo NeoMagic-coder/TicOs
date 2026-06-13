@@ -82,8 +82,8 @@ Proje iki bölümden oluşur: **backend** (FastAPI, port 8000) ve **frontend** (
 ### 1. Depoyu Klonla (Ortak)
 
 ```bash
-git clone https://github.com/NeoMagic-coder/OneProduct-Agent-OS.git
-cd OneProduct-Agent-OS
+git clone https://github.com/NeoMagic-coder/TicOs.git
+cd TicOs
 ```
 
 ### 2. Ortam Değişkenleri (Ortak)
