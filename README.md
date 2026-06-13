@@ -1,92 +1,96 @@
-# OneProduct-Agent-OS 🚀
- <img width="2752" height="1536" alt="unnamed" src="https://github.com/user-attachments/assets/a2ab8538-b636-4554-8a1d-a4c7e551caa4" />
+# TicOs 🦞
 
+<img width="2752" height="1536" alt="TicOsClaw" src="https://github.com/user-attachments/assets/a2ab8538-b636-4554-8a1d-a4c7e551caa4" />
 
 https://github.com/user-attachments/assets/18a0610f-4d7d-4487-bbad-29c8a21c746b
 
-
 https://github.com/user-attachments/assets/e2f84ab2-993c-4ebc-9dbd-8d91b1e03604
 
- 
-**OneProduct-Agent-OS**, karmaşık e-ticaret süreçlerini, ürün yönetimini ve pazar analizi operasyonlarını tek bir otonom yapay zeka işletim sistemi (Agentic OS) altında birleştiren yeni nesil bir ajan platformudur. 
+**TicOs** (TicOsClaw), tek ürün etrafında dönen e-ticaret operasyonlarını otonom ajan iş akışlarına dönüştüren çoklu-ajan yapay zeka işletim sistemidir. Hermes orkestratörü, OpenClaw araç katmanı, otonomi modülü ve TIC (sipariş/envanter) entegrasyonu ile pazar analizi, fiyatlandırma, stok, pazarlama ve müşteri operasyonlarını tek panelden yönetir.
 
 ---
 
-## 📌 Problem Tanımı ve Çözüm
+## 📌 Problem ve Çözüm
 
-### **Problem:**
-Günümüz e-ticaret ve ürün yönetimi ekosistemlerinde veriler; pazar analizi, rakip takibi, stok yönetimi, müşteri geri bildirimleri ve pazarlama stratejileri gibi farklı kanallara dağılmış durumdadır. İnsan yönetimi gerektiren bu süreçler, veri aktarımında gecikmelere, yanlış fiyatlandırma stratejilerine ve trendlerin kaçırılmasına yol açarak operasyonel verimliliği düşürür.
+### Problem
+E-ticaret verileri pazar analizi, rakip takibi, stok, müşteri geri bildirimleri ve pazarlama kanallarına dağılmış durumda. İnsan yönetimli süreçler gecikme, yanlış fiyatlandırma ve kaçırılan trendlere yol açar.
 
-### **Çözüm:**
-**OneProduct-Agent-OS**, tüm bu dağıtık süreçleri otonom iş akışlarına dönüştürür. Gelişmiş dil modelleri ve ajan mimarisi sayesinde pazar trendlerini analiz eder, dinamik kararlar alır, ürün yaşam döngüsünü uçtan uca yönetir ve işletmelerin insan gücüne bağımlı kalmadan 7/24 optimize bir şekilde çalışmasını sağlar.
+### Çözüm
+TicOs, dağınık süreçleri otonom iş akışlarına dönüştürür: 26 uzman ajan, 90 araç manifesti, policy-gated otonomi katmanı ve canlı SSE/voice supervisor ile 7/24 optimize operasyon sağlar.
 
 ---
 
-## 🏗️ Sistem Mimarisi
+## 🏗️ Mimari
 
-Aşağıdaki diyagram, sistemin çoklu-ajan (Multi-Agent) mimarisini, veri akışını ve Gemini API ile olan entegrasyonunu göstermektedir:
+```
+Kullanıcı / API / Voice / Extension
+           │
+           ▼
+    Hermes Orkestratör ──► TaskGraph (DAG) ──► Ajanlar (26)
+           │                                      │
+           │                                      ▼
+           │                              OpenClaw Executor
+           │                              (izin + şema + audit)
+           ▼                                      │
+    Türkçe özet birleştirme ◄─────────────────────┘
+           │
+           ├── Autonomy Layer (policy, negotiation, goal loop)
+           ├── Shopping Agent (Trendyol / Hepsiburada crawler)
+           ├── TIC Modülü (sipariş, envanter, müşteri)
+           ├── AutoResearch (parametre optimizasyon döngüsü)
+           └── Paperclip (org chart, hedefler, bütçe)
+```
 
- 
-    User([Kullanıcı / API Tetikleyici]) --> Orchestrator[Ajan Orkestratörü / LangChain]
-    
-    subgraph Ajan Katmanı (Agent OS)
-        Orchestrator --> AgentA[Pazar & Trend Analiz Ajanı]
-        Orchestrator --> AgentB[Fiyatlandırma & Stok Ajanı]
-        Orchestrator --> AgentC[Pazarlama & İçerik Üretim Ajanı]
-    end
-    
-    subgraph Akıllı Karar Mekanizması
-        AgentA --> Gemini[Google Gemini API]
-        AgentB --> Gemini
-        AgentC --> Gemini
-    end
-    
-    subgraph Veri & Araç Katmanı
-        Gemini --> VectorDB[(Vektör Veritabanı / RAG)]
-        Gemini --> WebSearch[Web Arama / Scraping Tool]
-    end
-    
-    Gemini -->|Otonom Çıktı / Aksiyon| Output[E-Ticaret Platformu / Dashboard]
-🛠️ Teknoloji Yığını
-LLM Çekirdeği: Google Gemini API (gemini-1.5-pro & gemini-1.5-flash)
+| Katman | Görev |
+|--------|-------|
+| **Hermes** | İstek yönlendirme, DAG planlama, paralel ajan çalıştırma, Türkçe özet |
+| **OpenClaw** | JSON manifest registry, izin kontrolü, schema validation, retry/fallback |
+| **Autonomy** | Policy-gated kararlar, müzakere, koordinasyon, marketplace router |
+| **Shopping** | Web arama + crawler ile ürün keşfi ve fiyat karşılaştırma |
+| **TIC** | Sipariş, envanter ve müşteri CRUD + dashboard rollup |
+| **Frontend** | Vite + React 19 SPA — tüm LLM trafiği backend proxy üzerinden |
 
-Ajan Çerçevesi (Framework): LangChain / LangGraph (Otonom planlama ve state yönetimi için)
+---
 
-Veritabanı / RAG: ChromaDB / Pinecone (Ürün bilgileri ve anlamsal hafıza için)
+## 🛠️ Teknoloji Yığını
 
-Backend: Python 3.10+, FastAPI
+| Bileşen | Teknoloji |
+|---------|-----------|
+| Backend | Python 3.11+, FastAPI, SQLAlchemy, asyncio |
+| Frontend | Vite, React 19, Zustand, TypeScript |
+| LLM | OpenRouter (metin) + Gemini (görsel, vision, voice, embedding) |
+| Veritabanı | SQLite (dev), PostgreSQL + pgvector (prod) |
+| Test | pytest, Playwright |
+| Dağıtım | Docker Compose, nginx reverse proxy |
 
-Bağımlılık Yönetimi: Poetry / Pip
+### Kayıt Sayıları
 
-⚡ Gemini ile "Fark Yaratan" Teknik Özellikler
-OneProduct-Agent-OS, standart LLM çağrılarının ötesine geçerek Gemini'ın benzersiz yeteneklerini mimarisinin merkezine konumlandırır:
+- **26 ajan** — 22 çekirdek + 4 otonomi ajanı
+- **90 araç manifesti** — 46 live, 44 mock
+- **5 org birimi** — yönetim, pazarlama, operasyon, finans, AR-GE
 
-Gelişmiş "Function Calling" (Araç Kullanımı): Gemini’ın native fonksiyon çağırma yeteneği sayesinde ajanlarımız; canlı pazar verilerini çekmek, stok durumunu sorgulamak ve veritabanı güncellemelerini sıfır hata ile yapılandırılmış veri (JSON) formatında gerçekleştirmek için API'leri doğrudan yönetir.
-
-Geniş Bağlam Penceresi (Context Window): Gemini 1.5 Pro'nun sunduğu devasa bağlam penceresi, aylık satış raporlarının, binlerce satırlık müşteri yorumlarının ve rakip analiz dokümanlarının aynı anda RAG (Retrieval-Augmented Generation) kaybı yaşanmadan tek bir bağlamda işlenmesine olanak tanır.
-
-Çoklu Modallık (Multimodality): Sistem sadece metin tabanlı verileri değil; ürün görsellerini, infografikleri ve rakip reklam tasarımlarını da Gemini üzerinden analiz ederek görsel trend takibi gerçekleştirebilir.
+---
 
 ## ⚙️ Kurulum ve Çalıştırma
 
-Proje iki bölümden oluşur: **backend** (FastAPI, port 8000) ve **frontend** (Vite + React, port 5173). Aşağıda her işletim sistemi için kurulum adımları bulunmaktadır.
+Proje **backend** (FastAPI, port 8000) ve **frontend** (Vite + React, port 5173) olmak üzere iki bölümden oluşur.
 
-### Ön Koşullar (Tüm Platformlar)
+### Ön Koşullar
 
-- **Python** 3.11 veya üzeri
-- **Node.js** 18 veya üzeri (LTS önerilir)
-- **Git**
-- Metin çağrıları için **OpenRouter API Key** veya **Gemini API Key**
-- Görsel, Vision, Voice ve embedding akışları için Gemini API Key
+- Python 3.11+
+- Node.js 18+ (LTS)
+- Git
+- Metin çağrıları için **OpenRouter** veya **Gemini API Key**
+- Görsel, Vision, Voice ve embedding için **Gemini API Key**
 
-### 1. Depoyu Klonla (Ortak)
+### 1. Depoyu Klonla
 
 ```bash
 git clone https://github.com/NeoMagic-coder/TicOs.git
 cd TicOs
 ```
 
-### 2. Ortam Değişkenleri (Ortak)
+### 2. Ortam Değişkenleri
 
 `backend/.env.local` dosyasını oluştur:
 
@@ -105,19 +109,15 @@ GEMINI_MODEL=gemini-2.5-flash
 VITE_GEMINI_MODEL=gemini-2.5-flash
 ```
 
-OpenRouter çağrıları varsayılan olarak ZDR, veri toplama reddi, fiyat tavanı
-ve düşük gecikme tercihiyle yönlendirilir. Geçici OpenRouter arızalarında
-`GEMINI_API_KEY` tanımlıysa metin çağrıları Gemini'ye düşer.
+OpenRouter çağrıları varsayılan olarak ZDR, veri toplama reddi, fiyat tavanı ve düşük gecikme tercihiyle yönlendirilir. Geçici OpenRouter arızalarında `GEMINI_API_KEY` tanımlıysa metin çağrıları Gemini'ye düşer.
 
 ---
 
 ### 🍎 macOS
 
 ```bash
-# Python ve Node yoksa Homebrew ile kur
 brew install python@3.12 node git
 
-# Backend
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
@@ -125,15 +125,13 @@ pip install -r apps/api/requirements.txt
 uvicorn apps.api.main:app --reload --port 8000
 ```
 
-Yeni bir terminal sekmesinde:
+Yeni terminal:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+cd frontend && npm install && npm run dev
 ```
 
-Veya repo kökünden her ikisini birden başlatmak için:
+Veya repo kökünden:
 
 ```bash
 scripts/dev.sh
@@ -144,11 +142,9 @@ scripts/dev.sh
 ### 🐧 Linux (Ubuntu / Debian)
 
 ```bash
-# Gerekli paketler
 sudo apt update
 sudo apt install -y python3 python3-venv python3-pip nodejs npm git
 
-# Backend
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
@@ -156,27 +152,19 @@ pip install -r apps/api/requirements.txt
 uvicorn apps.api.main:app --reload --port 8000
 ```
 
-Yeni bir terminalde:
+Yeni terminal: `cd frontend && npm install && npm run dev`
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-> **Not:** Eski dağıtımlarda Node sürümü düşükse [NodeSource](https://github.com/nodesource/distributions) veya `nvm` ile güncel sürümü kur.
+> Eski dağıtımlarda Node sürümü düşükse [NodeSource](https://github.com/nodesource/distributions) veya `nvm` kullanın.
 
 ---
 
 ### 🪟 Windows (PowerShell)
 
 ```powershell
-# Python ve Node yoksa winget ile kur
 winget install Python.Python.3.12
 winget install OpenJS.NodeJS.LTS
 winget install Git.Git
 
-# Backend
 cd backend
 python -m venv .venv
 .venv\Scripts\Activate.ps1
@@ -184,75 +172,73 @@ pip install -r apps\api\requirements.txt
 uvicorn apps.api.main:app --reload --port 8000
 ```
 
-> Eğer `Activate.ps1` engellenirse PowerShell'i **Yönetici** olarak açıp şunu çalıştır:
-> ```powershell
-> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-> ```
+Yeni pencere: `cd frontend && npm install && npm run dev`
 
-Yeni bir PowerShell penceresinde:
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-
-> **Stale env değişkeni uyarısı:** Backend "API key not valid" diye şikayet ederse sistemde eski bir `GEMINI_API_KEY` ortam değişkeni gölgeliyor olabilir. Temizle:
-> ```powershell
-> Remove-Item Env:GEMINI_API_KEY
-> ```
+> `Activate.ps1` engellenirse: `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser`
+>
+> Stale env uyarısı: `Remove-Item Env:GEMINI_API_KEY`
 
 ---
 
 ### Erişim
 
-Servisler ayağa kalktıktan sonra:
-
-- **Frontend:** http://localhost:5173
-- **Backend API:** http://localhost:8000
-- **Swagger Docs:** http://localhost:8000/docs
+| Servis | URL |
+|--------|-----|
+| Frontend | http://localhost:5173 |
+| Backend API | http://localhost:8000 |
+| Swagger Docs | http://localhost:8000/docs |
 
 ### Testler
 
 ```bash
-# Backend testleri (backend/ dizininden)
+# Backend (backend/ dizininden)
 pytest apps/api/tests -q
 
-# Frontend E2E testleri (frontend/ dizininden)
-npx playwright install chromium  # ilk seferde
+# Frontend E2E (frontend/ dizininden)
+npx playwright install chromium
 npm run test:e2e
 
-# Tam doğrulama (tsc + vite build + pytest)
+# Tam doğrulama
 scripts/check.sh
 ```
 
 ### Üretim Dağıtımı
 
-Üretim compose dosyası PostgreSQL/pgvector, güvenli reverse proxy ve kapalı
-demo/docs ayarlarıyla çalışır. Gerçek sırları repoya eklemeyin:
-
 ```bash
 cp docker/.env.prod.example docker/.env.prod
-# docker/.env.prod içindeki parolaları, API_KEY ve PUBLIC_HOST değerini değiştirin.
+# Parolaları, API_KEY ve PUBLIC_HOST değerini değiştirin.
 docker compose --env-file docker/.env.prod -f docker/compose.prod.yml up -d --build
 ```
 
-`API_KEY` tarayıcı bundle'ına gömülmez; reverse proxy tarafından backend
-isteklerine sunucu tarafında eklenir. Proxy varsayılan olarak yalnızca
-`127.0.0.1:8080` üzerinde dinler; alan adınızın TLS terminatörünü bu porta
-yönlendirin. Yatay ölçeklemede yalnızca bir süreç `SCHEDULER_ENABLED=true`
-kullanmalıdır.
+`API_KEY` tarayıcı bundle'ına gömülmez; reverse proxy tarafından sunucu tarafında eklenir. Yatay ölçeklemede yalnızca bir süreç `SCHEDULER_ENABLED=true` kullanmalıdır.
 
-🤝 Katkıda Bulunma (Contributing)
-Bu depoyu çatallayın (Fork).
+---
 
-Özellik dalınızı oluşturun (git checkout -b feature/AmazingFeature).
+## 📦 Proje Yapısı
 
-Değişikliklerinizi kaydedin (git commit -m 'Add some AmazingFeature').
+```
+TicOs/
+├── backend/apps/api/     # FastAPI — Hermes, OpenClaw, ajanlar, araçlar
+├── frontend/             # Vite + React SPA
+├── extension/            # Chrome extension (ürün sayfası entegrasyonu)
+├── ticos/                # Next.js TIC dashboard (Prisma)
+├── docker/               # Compose + Dockerfile'lar
+├── wiki/                 # Mimari notlar ve proje dokümantasyonu
+└── scripts/              # dev.sh, check.sh, deploy
+```
 
-Dalınıza gönderin (git push origin feature/AmazingFeature).
+---
 
-Bir Çekme İsteği (Pull Request) açın.
+## 🤝 Katkıda Bulunma
 
-📄 Lisans
-Bu proje MIT Lisansı altında lisanslanmıştır. Detaylar için LICENSE dosyasına göz atabilirsiniz.
+1. Depoyu fork edin
+2. Dal oluşturun: `git checkout -b feature/AmazingFeature`
+3. Commit: `git commit -m 'Add some AmazingFeature'`
+4. Push: `git push origin feature/AmazingFeature`
+5. Pull Request açın
+
+---
+
+## 📄 Lisans
+
+Bu proje MIT Lisansı altındadır. Detaylar için [LICENSE](LICENSE) dosyasına bakın.
