@@ -221,9 +221,13 @@ TicOs/
 ├── extension/            # Chrome extension (ürün sayfası entegrasyonu)
 ├── ticos/                # Next.js TIC dashboard (Prisma)
 ├── docker/               # Compose + Dockerfile'lar
-├── wiki/                 # Mimari notlar ve proje dokümantasyonu
+├── raw/                  # Değişmez ham kaynaklar (LLM Wiki)
+├── wiki/                 # Obsidian vault — mimari notlar + LLM Wiki
+├── START HERE.md         # Obsidian vault hızlı başlangıç
 └── scripts/              # dev.sh, check.sh, deploy
 ```
+
+Obsidian'da vault olarak repo kökünü açın. Agent şeması: `wiki/LLM-WIKI-AGENTS.md`.
 
 ---
 

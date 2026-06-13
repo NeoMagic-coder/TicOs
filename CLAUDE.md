@@ -357,6 +357,10 @@ intents are dispatched to the Hermes orchestrator. Falls back to MockProvider
 
 `apps/api/core/observability/telemetry.py` sets up OpenTelemetry traces and Prometheus metrics. The observability stack (Prometheus + Grafana) is defined in `docker/compose.observability.yml` and is optional for local dev.
 
+### Obsidian LLM Wiki
+
+The repo root is an Obsidian vault (`START HERE.md`). Before scanning the codebase for architecture questions, read `wiki/İndeks.md`. For external-source ingest/query/lint, follow `wiki/LLM-WIKI-AGENTS.md` (`raw/` immutable, `wiki/index.md` catalog, `wiki/log.md` append-only). Code changes update `wiki/10-Mimari-Notlar/` per `wiki/skima.md`.
+
 ## Tests
 
 `pytest-asyncio` is used; async tests are expected. Tests live in

@@ -38,5 +38,13 @@
 - [[Agent-Iletisim-ve-Otonom-Calisma]] — A2A bus + otonom döngü (Faz 1 ✅ tamam).
 - [[AutoResearch-Tasarimi]] — Karpathy tarzı otonom araştırma/optimizasyon döngüsü (Tamamlandı ✅).
 
+## 🧠 LLM Wiki (Karpathy Vault)
+- [[index]] — Kavram/entity/source kataloğu (`wiki/index.md`).
+- [[log]] — Ingest/query/lint işlem günlüğü.
+- [[concepts/LLM Wiki]] — Kalıcı bilgi tabanı yaklaşımı.
+- [[LLM-WIKI-AGENTS]] — Agent şeması ve operasyon kuralları.
+- `raw/` — Değişmez ham kaynak katmanı (repo kökü).
+- [[START HERE]] — Obsidian vault hızlı başlangıç (repo kökü).
+
 ---
-_Son senkronizasyon: 2026-06-04 (skima ilk inşa)._
+_Son senkronizasyon: 2026-06-13 (Karpathy LLM Wiki vault entegrasyonu)._

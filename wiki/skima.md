@@ -28,10 +28,20 @@ Manuel tetiklendiğinde veya kod tabanı değiştiğinde sırasıyla şu 3 opera
 ---
 
 ## 📂 WİKİ DOSYA STANDARDI
+
+### Proje mimarisi (skima)
 * `00-Inbox/` : Ham, işlenmemiş notlar.
 * `10-Mimari-Notlar/` : Özetlenmiş core mimari sayfalar.
 * `20-Projeler/` : Aktif feature planları.
 * `İndeks.md` : Merkezî harita.
+
+### LLM Wiki (Karpathy şeması)
+* `raw/` : Değişmez ham kaynaklar (dış makale, gist, PDF işaretçileri).
+* `wiki/concepts/`, `wiki/entities/`, `wiki/sources/` : Kaynaklardan türetilen sayfalar.
+* `wiki/index.md` : LLM Wiki içerik kataloğu.
+* `wiki/log.md` : Append-only işlem günlüğü.
+* `wiki/LLM-WIKI-AGENTS.md` : Resmi agent şeması (ingest / query / lint).
+* `START HERE.md` : Obsidian vault hızlı başlangıç.
 
 ## 🛑 KRİTİK SINIRLAR
 * Ana projenin config/gizli dosyalarını ASLA değiştirme.

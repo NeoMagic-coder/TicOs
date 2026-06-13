@@ -73,3 +73,9 @@ playwright/.cache/
 # Local dev databases & generated images
 **/data/*.db
 backend/apps/_images/
+
+# Obsidian (local UI state)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache
+.trash/
