@@ -36,7 +36,7 @@ export const ONBOARDING_CSS = `
 
   --r-1: 2px; --r-2: 4px; --r-3: 6px; --r-4: 8px; --r-5: 12px;
 
-  --menubar-h: 32px;
+  --menubar-h: 108px;
   --procstrip-h: 32px;
   --rail-w: 240px;
   --fleet-w: 304px;
@@ -120,9 +120,9 @@ export const ONBOARDING_CSS = `
 }
 .ob-menubar__brand { display: flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: 0.04em; color: var(--fg-1); }
 .ob-menubar__mark {
-  width: 12px; height: 12px;
-  background: var(--accent);
-  clip-path: polygon(0 0, 100% 0, 100% 60%, 60% 60%, 60% 100%, 0 100%);
+  width: 100px; height: 100px;
+  border-radius: 25px;
+  object-fit: cover;
 }
 .ob-menubar__sep { width: 1px; height: 12px; background: var(--border); margin: 0 8px; }
 .ob-menubar__path { color: var(--fg-3); font-weight: 400; }

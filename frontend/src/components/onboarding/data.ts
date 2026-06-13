@@ -150,7 +150,7 @@ export function bootLines(
 ): BootLine[] {
   const channels = draft.channels || [];
   return [
-    { t: 0,    line: `[ os ] init oneproduct.v2 ... ok` },
+    { t: 0,    line: `[ os ] init ticosclaw.v1 ... ok` },
     { t: 120,  line: `[ os ] loading profile :: ${draft.product_name || 'untitled'}` },
     { t: 240,  line: `[ ceo ] generating roadmap ...` },
     { t: 380,  line: `[ ceo ] roadmap.q1 ready (4 milestones)` },

@@ -12,14 +12,15 @@ import { useStore } from '@/stores/useStore';
 import { BASE_URL } from '@/lib/api';
 
 const RISK_META = {
-  high:   { label: 'Yüksek Risk', chip: 'rose',   color: 'var(--rose)' },
-  medium: { label: 'Orta Risk',   chip: 'amber',  color: 'var(--amber)' },
-  low:    { label: 'Düşük Risk',  chip: 'acid',   color: 'var(--acid)' },
+  high:     { label: 'Yüksek Risk', chip: 'rose',   color: 'var(--rose)' },
+  critical: { label: 'Kritik Risk', chip: 'rose',   color: 'var(--rose)' },
+  medium:   { label: 'Orta Risk',   chip: 'amber',  color: 'var(--amber)' },
+  low:      { label: 'Düşük Risk',  chip: 'acid',   color: 'var(--acid)' },
 };
 
 const ApprovalCard = ({ apv, expanded, onToggle, onAction }) => {
   const agent = AGENT_BY_ID[apv.requester];
-  const risk = RISK_META[apv.risk];
+  const risk = RISK_META[apv.risk] || RISK_META.medium;
   return (
     <div style={{
       background: 'var(--bg-1)',
@@ -132,7 +133,7 @@ const defaultPolicy = {
   risk_auto_threshold: 'low',
 };
 
-const ApprovalsPage = () => {
+const ApprovalsPage = ({ embedded = false }: { embedded?: boolean }) => {
   const storeApprovals = useAdaptedApprovals();
   // Only render real store data — no cold-start fake card.
   const APPROVALS = storeApprovals;
@@ -179,8 +180,18 @@ const ApprovalsPage = () => {
   // No card expanded by default — keeps the list scannable and avoids duplicate
   // text (the policy block repeats the action title) which trips up E2E lookups.
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [actioned, setActioned] = useState<Record<string, string>>({});
   const [policyOpen, setPolicyOpen] = useState(false);
+  const loadApprovalsFromBackend = useStore((s: any) => s.loadApprovalsFromBackend);
+
+  useEffect(() => {
+    void loadApprovalsFromBackend();
+  }, [loadApprovalsFromBackend]);
+
+  const pendingApprovals = useMemo(
+    () => APPROVALS.filter((a: any) => a.status === 'pending'),
+    [APPROVALS],
+  );
+  const visible = pendingApprovals;
   const [policy, setPolicy] = useState(() => {
     try {
       const raw = localStorage.getItem(POLICY_KEY);
@@ -216,36 +227,25 @@ const ApprovalsPage = () => {
   };
   const ingestExternalApproval = useStore((s: any) => s.ingestExternalApproval);
 
-  const visible = useMemo(() => APPROVALS.filter((a: any) => !actioned[a.id]), [actioned, APPROVALS]);
-
-  const handleAction = (id: string, kind: string) => {
-    setActioned(p => ({ ...p, [id]: kind }));
-    const target = APPROVALS.find((a: any) => a.id === id);
-    // If this card came from the mock cold-start data, materialize it into the
-    // store first so approve/reject actually persist and show up in the
-    // Onaylanan / Reddedilen tabs (fixes #15).
-    if (usingMockFallback && target) {
-      ingestExternalApproval(target);
-    }
-    if (kind === 'approve') storeActions.approve(id, 'Onaylandı (UI)');
-    else if (kind === 'reject') storeActions.reject(id, 'Reddedildi (UI)');
+  const handleAction = async (id: string, kind: string) => {
+    if (kind === 'approve') await storeActions.approveItem(id, 'Onaylandı (UI)');
+    else if (kind === 'reject') await storeActions.rejectItem(id, 'Reddedildi (UI)');
   };
 
-  const bulkApprove = () => {
-    // Use `visible` (already filtered by `actioned`) instead of raw APPROVALS so
-    // we never sweep an already-handled card back into the approve loop — that
-    // mismatch is what made bulk-approve hit an unrelated record (#16).
+  const bulkApprove = async () => {
     const pending = visible;
     if (!pending.length) {
       pushToast({ kind: 'info', title: 'Boş kuyruk', body: 'Bekleyen onay yok.' });
       return;
     }
     if (!confirm(`${pending.length} bekleyen onayı toplu onaylamak istiyor musun?`)) return;
-    for (const a of pending) handleAction(a.id, 'approve');
+    for (const a of pending) await handleAction(a.id, 'approve');
   };
 
-  return (
-    <div className="page">
+  const inner = (
+    <>
+      {!embedded && (
+        <>
       <div className="page__breadcrumb mono">HOME <span>›</span> ONAYLAR</div>
       <div className="page__header">
         <div>
@@ -267,6 +267,20 @@ const ApprovalsPage = () => {
           </button>
         </div>
       </div>
+        </>
+      )}
+
+      {embedded && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <span className="chip chip--amber">{visible.length} bekliyor</span>
+          <button className="btn btn--ghost btn--sm" onClick={() => setPolicyOpen(true)}>
+            <Icon name="settings" size={12} /> Politika
+          </button>
+          <button className="btn btn--sm" onClick={bulkApprove}>
+            <Icon name="check" size={12} /> Toplu Onayla
+          </button>
+        </div>
+      )}
 
       {/* Policy summary strip — values come straight from the policy state +
           live store stats. Previously this block hardcoded "142 / 5" labels
@@ -470,8 +484,11 @@ ${line(`auto-approved (24h)       = ${stats.autoApproved24h}`, `escalated       
           </div>
         </div>
       )}
-    </div>
+    </>
   );
+
+  if (embedded) return inner;
+  return <div className="page">{inner}</div>;
 };
 
 

@@ -75,6 +75,45 @@ async def create_goal(payload: GoalCreate) -> Goal:
         return _row_to_goal(row)
 
 
+@router.get("/overview")
+async def goals_overview() -> dict[str, Any]:
+    """Compact goal progress for dashboard + autonomy widgets."""
+    from apps.api.core.autonomy.goal_loop import get_loop_status
+
+    with session_scope() as s:
+        rows = s.execute(
+            select(GoalRow).where(GoalRow.status == "active").order_by(GoalRow.created_at)
+        ).scalars().all()
+        counts_rows = s.execute(
+            select(TaskRow.goal_id, func.count(TaskRow.task_id))
+            .where(TaskRow.goal_id.is_not(None))
+            .group_by(TaskRow.goal_id)
+        ).all()
+        counts: dict[str, int] = {gid: c for (gid, c) in counts_rows}
+
+    stale_ids = {g["id"] for g in get_loop_status().get("stale_goals", [])}
+    roots = [r for r in rows if not r.parent_goal_id][:5]
+    goals: list[dict[str, Any]] = []
+    for row in roots:
+        progress_pct: float | None = None
+        if row.target_value and row.current_value is not None and row.target_value > 0:
+            progress_pct = min(100.0, round(row.current_value / row.target_value * 100, 1))
+        goals.append(
+            {
+                "id": row.id,
+                "title": row.title,
+                "target_metric": row.target_metric,
+                "target_value": row.target_value,
+                "current_value": row.current_value,
+                "progress_pct": progress_pct,
+                "task_count": counts.get(row.id, 0),
+                "owner_agent_id": row.owner_agent_id,
+                "stale": row.id in stale_ids,
+            }
+        )
+    return {"goals": goals, "loop": get_loop_status()}
+
+
 @router.get("/{goal_id}", response_model=Goal)
 async def get_goal(goal_id: str) -> Goal:
     with session_scope() as s:

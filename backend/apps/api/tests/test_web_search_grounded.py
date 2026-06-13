@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 
 from apps.api.core.llm import provider as llm_provider_mod
-from apps.api.core.llm.provider import MockProvider
+from apps.api.core.llm.provider import GeminiProvider, LLMMessage, MockProvider, get_llm_provider
 from apps.api.tools.live import web_search
 
 
@@ -52,6 +52,30 @@ class _StubProvider:
         return _StubResponse(text=self.text, raw=self.raw, error=self.error)
 
 
+class _GeminiStub(GeminiProvider):
+    """Gemini yolu testleri icin — google_search grounding beklenir."""
+
+    def __init__(
+        self,
+        *,
+        text: str = "",
+        raw: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> None:
+        self.text = text
+        self.raw = raw or {}
+        self.error = error
+        self.last_grounding: list[str] | None = None
+
+    async def generate(self, *, system, messages, temperature=0.0, max_tokens=512, grounding=None):
+        self.last_grounding = grounding
+        return _StubResponse(text=self.text, raw=self.raw, error=self.error)
+
+
+class _BedrockStub(_StubProvider):
+    """Bedrock yolu testleri icin — harici web aramasi mock'lanir."""
+
+
 @pytest.fixture
 def reset_provider() -> Iterator[None]:
     orig = llm_provider_mod._provider
@@ -69,7 +93,7 @@ def _install(provider) -> None:
 
 @pytest.mark.asyncio
 async def test_returns_grounded_answer(reset_provider: None) -> None:
-    stub = _StubProvider(
+    stub = _GeminiStub(
         text="Türkiye nüfusu yaklaşık 85,4 milyon.",
         raw={
             "grounding_metadata": {
@@ -109,7 +133,7 @@ async def test_mock_provider_short_circuits(reset_provider: None) -> None:
 
 @pytest.mark.asyncio
 async def test_llm_error_degrades(reset_provider: None) -> None:
-    _install(_StubProvider(text="", error="Gemini 500"))
+    _install(_GeminiStub(text="", error="Gemini 500"))
     out = await web_search._live({"query": "test"})
     assert out["degraded"] is True
     assert "Gemini 500" in (out["degraded_reason"] or "")
@@ -123,11 +147,28 @@ async def test_no_grounding_metadata_marks_degraded(reset_provider: None) -> Non
     # Provider returns text but no grounding_metadata block — adapter should
     # surface the answer but flag it as degraded so the UI doesn't claim
     # citations that don't exist.
-    _install(_StubProvider(text="Cevap", raw={}))
+    _install(_GeminiStub(text="Cevap", raw={}))
     out = await web_search._live({"query": "test"})
     assert out["answer"] == "Cevap"
     assert out["degraded"] is True
     assert out["degraded_reason"] == "no_grounding_metadata"
+
+
+@pytest.mark.asyncio
+async def test_bedrock_path_uses_external_search(
+    reset_provider: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stub = _BedrockStub(text="Bedrock ozeti.")
+    _install(stub)
+
+    async def _fake_external(query: str):
+        return [query], [{"uri": "https://example.com/p", "title": "Ornek", "snippet": "fiyat 100"}]
+
+    monkeypatch.setattr(web_search, "_external_search", _fake_external)
+    out = await web_search._live({"query": "kulaklik fiyat"})
+    assert out["answer"] == "Bedrock ozeti."
+    assert out["sources"] == [{"uri": "https://example.com/p", "title": "Ornek"}]
+    assert out["degraded"] is False
 
 
 # ── empty query ───────────────────────────────────────────────────────────

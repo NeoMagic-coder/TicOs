@@ -199,6 +199,51 @@ async def test_marketplace_router_collects_and_reconciles():
     assert result.winner["proposal_id"] == "seller_hb_bid"
 
 
+def test_get_marketplace_router_uses_coordination_singleton():
+    from apps.api.core.autonomy.coordination import get_coordination_bus
+    from apps.api.core.autonomy.marketplace_router import get_marketplace_router
+
+    r1 = get_marketplace_router()
+    r2 = get_marketplace_router()
+    assert r1 is r2
+    assert r1.bus is get_coordination_bus()
+    assert "trendyol" in r1.targets
+
+
+@pytest.mark.asyncio
+async def test_get_marketplace_router_relays_dispatch_to_a2a():
+    from apps.api.core.messaging import get_message_bus, AgentMessage
+    from apps.api.core.autonomy.marketplace_router import MarketplaceRouter, MarketplaceTarget
+    from apps.api.core.autonomy.coordination import CoordinationBus
+    from apps.api.core.messaging.coordination_bridge import wire_coordination_to_a2a
+
+    get_message_bus().reset()
+    bus = CoordinationBus()
+    wire_coordination_to_a2a(bus)
+    received: list[AgentMessage] = []
+
+    async def handler(msg: AgentMessage) -> None:
+        received.append(msg)
+
+    get_message_bus().subscribe(handler, intent="notify_event")
+    router = MarketplaceRouter(
+        bus=bus,
+        targets=[
+            MarketplaceTarget(
+                marketplace="trendyol",
+                agent_id="operations_agent",
+                profile=AgentGoalProfile(agent_id="operations_agent", objective="minimize_cost"),
+            ),
+        ],
+        response_timeout_s=0.05,
+    )
+    result = await router.dispatch(topic="order.sync", payload={"sku": "X1"}, marketplaces=["trendyol"])
+    assert result.winner is None  # no reply within timeout
+    assert len(received) == 1
+    assert received[0].to_agent == "operations_agent"
+    assert received[0].payload.get("sku") == "X1"
+
+
 # ---------------------- Negotiation Templates (Sprint 3-A) ------------------
 
 

@@ -77,7 +77,7 @@
       "supervisor"
     ],
     "cost_estimate_usd": 0.001,
-    "mode": "mock",
+    "mode": "live",
     "tags": [
       "analytics",
       "sales"

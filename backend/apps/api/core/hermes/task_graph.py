@@ -36,6 +36,36 @@ class TaskGraph:
         self.nodes[node.node_id] = node
         return node
 
+    def inject_handoff(
+        self,
+        *,
+        from_node_id: str,
+        to_agent: str,
+        title: str,
+        payload: dict[str, Any] | None = None,
+    ) -> TaskNode | None:
+        """Inject a runtime node that runs after ``from_node_id`` completes."""
+        if from_node_id not in self.nodes:
+            return None
+        parent = self.nodes[from_node_id]
+        if parent.status not in {"running", "completed"}:
+            return None
+
+        body = payload or {}
+        handoff_id = body.get("handoff_message_id")
+        if handoff_id:
+            for existing in self.nodes.values():
+                if existing.payload.get("handoff_message_id") == handoff_id:
+                    return None
+
+        node = TaskNode.new(
+            title=title,
+            agent_id=to_agent,
+            depends_on=[from_node_id],
+            payload=body,
+        )
+        return self.add(node)
+
     def ready(self) -> list[TaskNode]:
         out: list[TaskNode] = []
         for node in self.nodes.values():

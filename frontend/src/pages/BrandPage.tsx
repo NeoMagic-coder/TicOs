@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo } from 'react';
-import { Icon, AgentAvatar, Sparkline } from '@/components/AOS/widgets';
+import { Icon, AgentAvatar } from '@/components/AOS/widgets';
 import { AGENT_BY_ID } from '@/data/aos/mockData';
 import { useStore } from '@/stores/useStore';
 
@@ -27,7 +27,8 @@ const BrandPage = () => {
   const quickAsk = useStore((s: any) => s.quickAsk);
   const [prompt, setPrompt] = useState('');
   const [generating, setGenerating] = useState(false);
-  const [generatedImages, setGeneratedImages] = useState<Array<{ url: string; prompt: string; ts: string; kind?: string }>>([]);
+  const [imageStatus, setImageStatus] = useState<any>(null);
+  const [generatedImages, setGeneratedImages] = useState<Array<{ url: string; prompt: string; ts: string; kind?: string; degraded?: boolean }>>([]);
 
   // Load existing images from backend on mount.
   useEffect(() => {
@@ -47,6 +48,20 @@ const BrandPage = () => {
         setGeneratedImages(mapped);
       } catch {
         /* backend offline — placeholders fall back below */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/api/v1/llm/image-status`, { signal: AbortSignal.timeout(5000) });
+        if (!res.ok || cancelled) return;
+        setImageStatus(await res.json());
+      } catch {
+        /* ignore */
       }
     })();
     return () => { cancelled = true; };
@@ -78,7 +93,7 @@ const BrandPage = () => {
     }
     // Build a rich default prompt that anchors the image generator on the
     // actual brand identity (name, tagline, palette, archetype, mood, category)
-    // — otherwise non-Gemini fallbacks like fal.ai/flux produce unrelated stock imagery.
+    // Bedrock image generation — product name must be in prompt for on-brand visuals.
     const brandName: string = brand?.brand_name || product.product_name || '';
     const tagline: string = brand?.tagline || '';
     const archetype: string = brand?.archetype || '';
@@ -124,22 +139,49 @@ const BrandPage = () => {
           prompt: v.output.prompt || finalPrompt,
           ts: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
           kind: 'product',
+          degraded: Boolean(v.output?.degraded),
         }));
+      const hardFailures = variationsList.filter((v) => v.status === 'failure');
       const errors = variationsList.filter((v) => v.status !== 'success' || !v.output?.url);
+      const placeholders = newImages.filter((img) => img.degraded);
       if (newImages.length) {
         setGeneratedImages((prev) => [...newImages, ...prev]);
-        pushToast({ kind: 'success', title: 'Görsel üretildi', body: `${newImages.length}/${variations} başarılı` });
+        if (placeholders.length === newImages.length) {
+          pushToast({
+            kind: 'warn',
+            title: 'Yer tutucu görsel',
+            body: 'Bedrock Image erişimi yok — AWS Console\'da Stability Image Core modelini etkinleştirin.',
+          });
+        } else if (placeholders.length) {
+          pushToast({
+            kind: 'warn',
+            title: 'Kısmi başarı',
+            body: `${newImages.length - placeholders.length}/${variations} gerçek görsel, ${placeholders.length} yer tutucu.`,
+          });
+        } else {
+          pushToast({ kind: 'success', title: 'Görsel üretildi', body: `${newImages.length}/${variations} başarılı` });
+        }
       }
-      if (errors.length) {
+      if (hardFailures.length) {
+        pushToast({
+          kind: 'warn',
+          title: 'Bazı varyasyonlar başarısız',
+          body: `${hardFailures.length} varyasyon zaman aşımı veya sunucu hatası — tekrar deneyin.`,
+        });
+      } else if (errors.length && !newImages.length) {
         const firstErr = errors[0]?.output?.error || errors[0]?.status || 'bilinmeyen hata';
-        pushToast({ kind: 'warn', title: 'Bazı varyasyonlar başarısız', body: String(firstErr).slice(0, 160) });
+        const msg = String(firstErr);
+        const friendly = msg.includes('Operation not allowed')
+          ? 'Bedrock görsel modeli izni yok — AWS Console → Bedrock → Model access → Stability Image Core'
+          : msg.slice(0, 160);
+        pushToast({ kind: 'warn', title: 'Bazı varyasyonlar başarısız', body: friendly });
       }
       if (!newImages.length && !errors.length) {
         pushToast({ kind: 'warn', title: 'Yanıt boş', body: 'Backend görsel döndürmedi.' });
       }
     } catch (err: any) {
       quickAsk(`brand_visual_generator çalıştır: prompt='${finalPrompt}', varyasyon=${variations}, ürün=${product.product_name}.`);
-      pushToast({ kind: 'warn', title: 'Doğrudan API başarısız', body: `${err?.message || err} — Hermes üzerinden tekrar deneniyor.` });
+      pushToast({ kind: 'warn', title: 'Doğrudan API başarısız', body: `${err?.message || err} — TicOSClaw üzerinden tekrar deneniyor.` });
     } finally {
       setGenerating(false);
     }
@@ -236,10 +278,10 @@ const BrandPage = () => {
         <div>
           <h1 className="page__title">
             Marka Stüdyosu
-            <span className="page__title-tag">brand_identity_agent · gemini</span>
+            <span className="page__title-tag">brand_identity_agent · bedrock</span>
           </h1>
           <p className="page__sub">
-            Ürün için marka kimliği, renk paleti ve görsel varlıklar. Gemini görsel modeline doğrudan bağlı.
+            Ürün için marka kimliği, renk paleti ve görsel varlıklar. AWS Bedrock üzerinden üretilir.
             {generatedAt && (
               <span className="mono" style={{ marginLeft: 8, fontSize: 10, color: 'var(--fg-3)' }}>
                 · son üretim {new Date(generatedAt).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
@@ -272,6 +314,21 @@ const BrandPage = () => {
           </button>
         </div>
       </div>
+
+      {imageStatus?.bedrock_token_present && !imageStatus?.fal_configured && (
+        <div style={{
+          background: 'rgba(255,177,61,0.08)', border: '1px solid rgba(255,177,61,0.35)',
+          padding: '10px 14px', borderRadius: 4, marginBottom: 14, fontSize: 12,
+          color: 'var(--fg-1)', lineHeight: 1.5,
+        }}>
+          <strong style={{ color: 'var(--amber)' }}>Görsel modu:</strong>{' '}
+          {imageStatus.mode === 'bedrock'
+            ? `Bedrock (${imageStatus.bedrock_image_model}) — model erişimi yoksa yer tutucu SVG üretilir.`
+            : 'Yapılandırılmamış'}
+          {' '}
+          <span style={{ color: 'var(--fg-3)' }}>{imageStatus.hint_tr}</span>
+        </div>
+      )}
 
       {brandIdentityError && (
         <div style={{
@@ -832,7 +889,7 @@ const BrandPage = () => {
               <div>
                 <div className="label-eyebrow">Token Maliyet</div>
                 <div className="tnum" style={{ fontSize: 22 }}>${stats.totalCostUsd.toFixed(2)}</div>
-                <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>gemini image</div>
+                <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>bedrock image</div>
               </div>
               <div>
                 <div className="label-eyebrow">Avg Süre</div>
@@ -865,7 +922,7 @@ const BrandPage = () => {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <span className="label-eyebrow" style={{ color: 'var(--violet)' }}>● BRAND_VISUAL_GENERATOR</span>
-                <span className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>model: gemini-2.5-image · 1024x1024</span>
+                <span className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>model: amazon.titan-image · 1024x1024</span>
               </div>
               <input
                 value={prompt}
@@ -975,7 +1032,7 @@ const BrandPage = () => {
             </div>
             {generating && (
               <div className="mono" style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 10 }}>
-                Üretiliyor… Gemini'den yanıt bekleniyor (20–60s).
+                Üretiliyor… Bedrock'tan yanıt bekleniyor (20–60s).
               </div>
             )}
           </div>

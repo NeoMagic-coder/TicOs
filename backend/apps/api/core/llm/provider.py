@@ -325,7 +325,7 @@ class MockProvider(LLMProvider):
             f"1. İlgili 3 ajan görevlendirildi\n"
             f"2. Mock tool çağrıları yapıldı\n"
             f"3. Detaylı rapor Tasks sayfasından görülebilir\n\n"
-            f"⚠️ Bu cevap MockProvider tarafından üretildi. Gerçek Gemini için GEMINI_API_KEY ayarlayın."
+            f"⚠️ Bu cevap MockProvider tarafından üretildi. Gerçek LLM için AWS_BEARER_TOKEN_BEDROCK veya GEMINI_API_KEY ayarlayın."
         )
         return LLMResponse(
             text=canned,
@@ -335,6 +335,167 @@ class MockProvider(LLMProvider):
         )
 
 
+class BedrockProvider(LLMProvider):
+    """Calls AWS Bedrock (or a Bedrock proxy) via REST API with bearer token auth.
+
+    Uses the OpenAI-compatible chat completions format so it works with most
+    Bedrock proxy/gateway services (Mantle, LiteLLM, etc.). The base URL and
+    model are configurable via settings.
+    """
+
+    def __init__(
+        self,
+        bearer_token: str,
+        model: str = "claude-3-5-sonnet-20241022",
+        fallback_models: list[str] | None = None,
+        base_url: str = "https://bedrock-runtime.us-east-1.amazonaws.com",
+        max_concurrency: int = 2,
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+    ) -> None:
+        import httpx
+
+        self.model = model
+        self.fallback_models = [m for m in (fallback_models or []) if m and m != model]
+        self.base_url = base_url.rstrip("/")
+        self._token = bearer_token
+        self._temperature = temperature
+        self._max_tokens = max_tokens
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(60.0))
+        self._sem = asyncio.Semaphore(max(1, max_concurrency))
+        self._mock_fallback = MockProvider()
+        self.last_call_degraded: bool = False
+        self.last_call_degraded_reason: str | None = None
+
+    async def generate(
+        self,
+        *,
+        system: str,
+        messages: list[LLMMessage],
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        grounding: list[str] | None = None,
+    ) -> LLMResponse:
+        del grounding
+
+        chat: list[dict[str, str]] = []
+        if system:
+            chat.append({"role": "system", "content": system})
+        for m in messages:
+            role = "assistant" if m.role in ("model", "assistant") else m.role
+            chat.append({"role": role, "content": m.content})
+
+        url = f"{self.base_url}/v1/chat/completions"
+
+        models_to_try = [self.model, *self.fallback_models]
+        last_error: str | None = None
+        for model in models_to_try:
+            payload = {
+                "model": model,
+                "messages": chat,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            async with self._sem:
+                resp = await self._call_with_retry(url, payload, model)
+            if resp.text and resp.error is None:
+                self.last_call_degraded = False
+                self.last_call_degraded_reason = None
+                return resp
+            last_error = resp.error or resp.text or "empty"
+            log.info("bedrock.fallback_to_next", from_model=model, error=str(last_error)[:100])
+            continue
+
+        # All models exhausted — degrade to mock
+        log.warning("bedrock.all_models_failed", last_error=last_error)
+        mock_resp = await self._mock_fallback.generate(
+            system=system, messages=messages, temperature=temperature, max_tokens=max_tokens,
+        )
+        mock_resp.error = last_error
+        mock_resp.model = "mock(bedrock-fallback)"
+        mock_resp.raw = {**(mock_resp.raw or {}), "degraded": True, "reason": "bedrock_all_models_failed"}
+        self.last_call_degraded = True
+        self.last_call_degraded_reason = last_error or "bedrock_all_models_failed"
+        return mock_resp
+
+    async def _call_with_retry(self, url: str, payload: dict, model: str) -> LLMResponse:
+        import httpx
+
+        tracer = get_tracer()
+        max_attempts = 2
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with tracer.start_as_current_span("llm.bedrock") as span:
+                    span.set_attribute("llm.model", model)
+                    span.set_attribute("llm.provider", "bedrock")
+                    response = await self._client.post(
+                        url,
+                        headers={
+                            "Authorization": f"Bearer {self._token}",
+                            "Content-Type": "application/json",
+                        },
+                        json=payload,
+                    )
+                    span.set_attribute("http.status_code", response.status_code)
+
+                if response.status_code == 429 and attempt < max_attempts:
+                    delay = 2 ** attempt
+                    log.warning("bedrock.rate_limited", model=model, attempt=attempt, retry_in_s=delay)
+                    await asyncio.sleep(min(delay, 8))
+                    continue
+
+                response.raise_for_status()
+                data = response.json()
+
+                choice = (data.get("choices") or [{}])[0]
+                text = (choice.get("message") or {}).get("content", "") or ""
+                text = text.strip()
+
+                usage = data.get("usage") or {}
+                tokens = (usage.get("total_tokens") or 0)
+
+                LLM_REQUESTS.labels(provider="bedrock", model=model, status="success").inc()
+                if tokens:
+                    LLM_TOKENS.labels(provider="bedrock", model=model).inc(tokens)
+
+                return LLMResponse(
+                    text=text,
+                    tokens_used=tokens,
+                    model=model,
+                    raw=data,
+                )
+
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                err_body = ""
+                try:
+                    err_body = exc.response.text[:300]
+                except Exception:
+                    pass
+                log.warning("bedrock.http_error", status=status, model=model, error=err_body)
+                LLM_REQUESTS.labels(provider="bedrock", model=model, status=f"http_{status}").inc()
+                if status == 429 and attempt < max_attempts:
+                    delay = 2 ** attempt
+                    await asyncio.sleep(min(delay, 8))
+                    continue
+                return LLMResponse(text="", error=f"Bedrock {status} on {model}: {err_body}")
+
+            except Exception as exc:
+                err_msg = str(exc)[:300]
+                try:
+                    log.error("bedrock.exception", model=model, error=err_msg)
+                except Exception:
+                    pass
+                try:
+                    LLM_REQUESTS.labels(provider="bedrock", model=model, status="error").inc()
+                except Exception:
+                    pass
+                return LLMResponse(text="", error=err_msg or "Bedrock unknown error")
+
+        return LLMResponse(text="", error=f"Bedrock retry limit on {model}")
+
+
 _provider: LLMProvider | None = None
 
 
@@ -342,8 +503,9 @@ def get_llm_provider() -> LLMProvider:
     """Return the configured LLM provider (singleton).
 
     Selection order:
-    1. Explicit ``LLM_PROVIDER`` env var ("gemini" | "mock")
-    2. Auto-detect: Gemini if ``GEMINI_API_KEY`` is set, else MockProvider.
+    1. Explicit ``LLM_PROVIDER`` env var ("gemini" | "bedrock" | "mock")
+    2. Auto-detect: bedrock (if ``AWS_BEARER_TOKEN_BEDROCK`` set),
+       Gemini (if ``GEMINI_API_KEY`` set), else MockProvider.
     """
     global _provider
     if _provider is not None:
@@ -351,9 +513,24 @@ def get_llm_provider() -> LLMProvider:
     settings = get_settings()
 
     explicit = (settings.llm_provider or "").lower().strip()
+    use_bedrock = explicit == "bedrock" or (not explicit and bool(settings.aws_bearer_token_bedrock))
     use_gemini = explicit == "gemini" or (not explicit and bool(settings.gemini_api_key))
 
-    if use_gemini:
+    if use_bedrock:
+        if not settings.aws_bearer_token_bedrock:
+            log.warning("llm.provider.fallback_mock", reason="bedrock_token_missing")
+            _provider = MockProvider()
+        else:
+            _provider = BedrockProvider(
+                bearer_token=settings.aws_bearer_token_bedrock,
+                model=settings.bedrock_model,
+                fallback_models=settings.bedrock_fallback_models,
+                base_url=settings.bedrock_base_url,
+                max_concurrency=settings.llm_max_concurrency,
+            )
+            log.info("llm.provider.selected", provider="bedrock", model=settings.bedrock_model)
+
+    elif use_gemini:
         if not settings.gemini_api_key:
             log.warning("llm.provider.fallback_mock", reason="gemini_key_missing")
             _provider = MockProvider()

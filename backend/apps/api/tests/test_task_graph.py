@@ -25,3 +25,26 @@ def test_dag_completion():
     assert g.is_done()
     summary = g.summary()
     assert summary["completed"] == 1
+
+
+def test_inject_handoff_adds_dependent_node():
+    g = TaskGraph(root_task_id="t_3")
+    parent = g.add(TaskNode.new(title="Pricing", agent_id="dynamic_pricing_agent"))
+    parent.status = "running"
+    child = g.inject_handoff(
+        from_node_id=parent.node_id,
+        to_agent="logistics_agent",
+        title="Stok takibi",
+        payload={"message": "SKU-1 stok hareketini izle", "handoff_message_id": "msg_1"},
+    )
+    assert child is not None
+    assert child.agent_id == "logistics_agent"
+    assert parent.node_id in child.depends_on
+    assert parent.node_id in [n.node_id for n in g.ready()] or child.node_id not in [n.node_id for n in g.ready()]
+    dup = g.inject_handoff(
+        from_node_id=parent.node_id,
+        to_agent="logistics_agent",
+        title="Dup",
+        payload={"message": "x", "handoff_message_id": "msg_1"},
+    )
+    assert dup is None

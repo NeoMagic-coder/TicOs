@@ -4,13 +4,76 @@ import type { AgentSpec, Task, Approval, ToolManifest, KnowledgeDocument, ChatMe
 import { agents as seedAgents } from '@/data/agents';
 import { tools as seedTools } from '@/data/tools';
 import { seedTasks, seedApprovals, seedKnowledge, seedAuditLogs, seedIntegrations, seedChatHistory, makeDashboardForProduct, makeDemoDashboardForProduct } from '@/data/seed';
+
+function dashboardFromSnapshot(snap: Record<string, unknown>): DashboardSummary & { _isDemo?: boolean; _source?: string; _measured_at?: string | null } {
+  const source = String(snap.source || 'derived');
+  const isDemo = source === 'demo';
+  return {
+    today_sales: Number(snap.today_sales) || 0,
+    today_orders: Number(snap.today_orders) || 0,
+    today_roas: Number(snap.today_roas) || 0,
+    avg_order_value: Number(snap.avg_order_value) || 0,
+    conversion_rate: Number(snap.conversion_rate) || 0,
+    active_campaigns: Number(snap.active_campaigns) || (Array.isArray(snap.channel_performance) ? snap.channel_performance.length : 0),
+    pending_approvals: Number(snap.pending_approvals) || 0,
+    active_tasks: Number(snap.active_tasks) || 0,
+    critical_alerts: [],
+    recent_tasks: [],
+    agent_activity: [],
+    sales_trend: (snap.sales_trend as DashboardSummary['sales_trend']) || [],
+    orders_trend: (snap.orders_trend as number[]) || [],
+    roas_trend: (snap.roas_trend as number[]) || [],
+    channel_performance: (snap.channel_performance as DashboardSummary['channel_performance']) || [],
+    _isDemo: isDemo,
+    _source: isDemo ? 'demo' : 'backend',
+    _measured_at: (snap.measured_at as string | null) ?? null,
+  };
+}
 import { seedOnboardedProduct, seedReviews, seedInfluencers, seedExperiments, seedEmailFlows } from '@/data/oneproduct';
 import { callGemini, isGeminiConfigured } from '@/lib/gemini';
-import { BASE_URL, chatBackend, chatWithFallback, backendReachable, estimateApprovalImpact as estimateApprovalImpactApi, resolveBackendUrl, streamChatBackend, type ChatBackendResponse, type ChatStreamEvent } from '@/lib/api';
+import { BASE_URL, chatBackend, chatWithFallback, backendReachable, backendHeaders, estimateApprovalImpact as estimateApprovalImpactApi, resolveBackendUrl, streamChatBackend, type ChatBackendResponse, type ChatStreamEvent } from '@/lib/api';
 import { v4 as uuidv4 } from 'uuid';
 import { pushToast } from '@/components/AOS/Toast';
 
 const ALLOWED_RISK = new Set(['low', 'medium', 'high', 'critical']);
+
+const ACTIVE_TASK_STATUSES = new Set([
+  'created', 'triaged', 'assigned', 'in_progress', 'waiting_tool_result', 'waiting_human_approval',
+]);
+
+function normalizeBackendTask(raw: Record<string, unknown>): Task {
+  const ctx = (raw.context as Record<string, unknown>) || {};
+  const assigned = (raw.assigned_agent_id as string | null)
+    ?? (ctx.owner_agent_id as string | null)
+    ?? null;
+  return {
+    task_id: String(raw.task_id || ''),
+    parent_task_id: (raw.parent_task_id as string | null) ?? null,
+    title: String(raw.title || raw.task_id || 'Görev'),
+    description: String(raw.description || ''),
+    goal: String(raw.goal || ''),
+    goal_id: (raw.goal_id as string | null) ?? null,
+    status: (raw.status as Task['status']) || 'created',
+    priority: (raw.priority as Task['priority']) || 'medium',
+    assigned_agent_id: assigned,
+    context: ctx,
+    constraints: Array.isArray(raw.constraints) ? (raw.constraints as string[]) : [],
+    required_capabilities: Array.isArray(raw.required_capabilities) ? (raw.required_capabilities as string[]) : [],
+    output_schema: {},
+    max_iterations: Number(raw.max_iterations) || 5,
+    deadline: raw.deadline ? String(raw.deadline) : null,
+    approval_required: Boolean(raw.approval_required),
+    confidence: typeof raw.confidence === 'number' ? raw.confidence : null,
+    iterations_used: Number(raw.iterations_used) || 0,
+    sub_tasks: [],
+    tools_called: [],
+    messages: [],
+    created_at: raw.created_at ? String(raw.created_at) : new Date().toISOString(),
+    updated_at: raw.updated_at ? String(raw.updated_at) : new Date().toISOString(),
+    completed_at: raw.completed_at ? String(raw.completed_at) : null,
+    result: (raw.result as Task['result']) ?? null,
+  };
+}
 
 /** Extract /images/... URLs from agent content and resolve them to absolute backend URLs. */
 function extractImageUrls(content: string): string[] {
@@ -50,12 +113,36 @@ function withProductBrief(message: string, p: OnboardedProduct | null): string {
   return `${brief}\n\n${message}`;
 }
 
-/** Human-readable label for a Hermes SSE progress event. */
+/** One SSE progress row — carries graph metadata for live DAG rendering. */
+export type ChatProgressEntry = {
+  event: string;
+  ts: number;
+  label: string;
+  agent_id?: string;
+  node_id?: string;
+  tool_id?: string;
+  score?: number;
+  reason?: string;
+  confidence?: number;
+  cost_usd?: number;
+  task_id?: string;
+  primary?: string;
+  supporting?: string[];
+  nodes?: { id: string; agent_id: string; title: string }[];
+  from_node_id?: string;
+  from_agent?: string;
+  title?: string;
+  status?: string;
+  message?: string;
+  error?: string;
+};
+
+/** Human-readable label for a TicOSClaw SSE progress event. */
 function formatProgressLabel(ev: Extract<ChatStreamEvent, { kind: 'progress' }>): string {
   const agent = (ev.agent_id as string | undefined) ?? '';
   const tool = (ev.tool_id as string | undefined) ?? '';
   switch (ev.event) {
-    case 'task_started':    return 'Hermes planlamaya başladı';
+    case 'task_started':    return 'TicOSClaw planlamaya başladı';
     case 'plan_ready':      return `Plan hazır → ${(ev as Record<string, unknown>).primary ?? ''}`;
     case 'agent_started':   return `${agent} çalışıyor`;
     case 'tool_called':     return `${agent} → ${tool}`;
@@ -63,7 +150,9 @@ function formatProgressLabel(ev: Extract<ChatStreamEvent, { kind: 'progress' }>)
     case 'agent_retry':     return `${agent} yeniden deneniyor`;
     case 'agent_completed': return `${agent} tamamlandı`;
     case 'agent_failed':    return `${agent} hata verdi`;
+    case 'node_injected':   return `DAG genişledi → ${agent || (ev as Record<string, unknown>).agent_id || 'ajan'}`;
     case 'merging':         return 'Sonuçlar birleştiriliyor';
+    case 'done':            return `Tamamlandı · güven ${((ev as Record<string, unknown>).confidence as number | undefined)?.toFixed(2) ?? '?'}`;
     default:                return '';
   }
 }
@@ -102,14 +191,18 @@ const PAGE_ALIASES: Record<string, string> = {
   influencer: 'influencers', 'influencer\'lar': 'influencers', influencers: 'influencers',
   agents: 'agents', ajan: 'agents', ajanlar: 'agents', 'agent office': 'agents',
   görevler: 'tasks', gorevler: 'tasks', tasks: 'tasks', görev: 'tasks',
-  onaylar: 'approvals', onay: 'approvals', approvals: 'approvals',
+  onaylar: 'approvals', onay: 'approvals', approvals: 'approvals', // → birleşik iş kuyruğu (onay sekmesi)
   araçlar: 'tools', araclar: 'tools', tools: 'tools',
   bilgi: 'knowledge', knowledge: 'knowledge', 'bilgi bankası': 'knowledge',
   analitik: 'analytics', analytics: 'analytics', metrikler: 'analytics',
   entegrasyon: 'integrations', entegrasyonlar: 'integrations', integrations: 'integrations',
+  envanter: 'tic_products', stok: 'tic_products', 'stok ürünleri': 'tic_products',
+  siparişler: 'tic_orders', siparisler: 'tic_orders', sipariş: 'tic_orders',
+  karşılaştırma: 'shopping', karsilastirma: 'shopping', alışveriş: 'shopping', alisveris: 'shopping',
   audit: 'audit', denetim: 'audit', 'denetim kayıtları': 'audit',
   ayarlar: 'settings', settings: 'settings', ayar: 'settings',
-  otonom: 'autonomy', otonomi: 'autonomy', autonomy: 'autonomy', 'otonom karar': 'autonomy',
+  otonom: 'autonomy_console', otonomi: 'autonomy_console', autonomy: 'autonomy_console', 'otonom karar': 'autonomy_console',
+  hedef: 'goals', hedefler: 'goals', goals: 'goals',
 };
 
 /** Lightweight intent matcher — translates a Turkish chat command into a
@@ -132,6 +225,11 @@ const SLASH_COMMANDS: Record<string, (rest: string) => { intent: string; params?
   approve:  () => ({ intent: 'approve_all' }),
   reject:   () => ({ intent: 'reject_all' }),
   sync:     () => ({ intent: 'sync_all_integrations' }),
+  sweep:    () => ({ intent: 'autonomy_sweep' }),
+  autonomy: () => ({ intent: 'navigate', params: { page: 'autonomy_console' } }),
+  goals:    (rest) => (rest.trim().startsWith('tick')
+    ? { intent: 'goal_loop_tick' }
+    : { intent: 'navigate', params: { page: 'goals' } }),
   reset:    () => ({ intent: 'reset_all' }),
   debug:    () => ({ intent: 'toggle_debug' }),
 };
@@ -146,7 +244,7 @@ function detectIntent(raw: string): { intent: string; params?: Record<string, st
     const cmd = SLASH_COMMANDS[head];
     if (cmd) return cmd(rest.join(' '));
     // Unknown slash command — fall through so the message is sent verbatim
-    // (Hermes can still try to interpret it).
+    // (TicOSClaw can still try to interpret it).
   }
 
   const has = (...words: string[]) => words.some((w) => t.includes(w));
@@ -225,7 +323,7 @@ function detectIntent(raw: string): { intent: string; params?: Record<string, st
   return null;
 }
 
-/** Materialize a backend Hermes response into Tasks + Approvals + Audit logs. */
+/** Materialize a TicOSClaw backend response into Tasks + Approvals + Audit logs. */
 let _persistImpl:
   | ((args: PersistArgs) => { taskId: string; approvalCount: number })
   | null = null;
@@ -256,8 +354,8 @@ export interface AppState {
   // Approvals
   approvals: Approval[];
   ingestExternalApproval: (apv: any) => void;
-  approveItem: (id: string, note?: string) => void;
-  rejectItem: (id: string, note: string) => void;
+  approveItem: (id: string, note?: string) => Promise<void>;
+  rejectItem: (id: string, note: string) => Promise<void>;
   estimateApprovalImpact: (id: string) => Promise<void>;
 
   // Tools
@@ -282,11 +380,11 @@ export interface AppState {
    *  GEMINI_API_KEY) or Gemini fell back due to quota. UI surfaces a badge. */
   llmDegraded: boolean;
   llmDegradedReason: string | null;
-  chatProgress: { event: string; agent_id?: string; tool_id?: string; ts: number; label: string; score?: number; reason?: string; confidence?: number; cost_usd?: number }[];
+  chatProgress: ChatProgressEntry[];
   /** Frozen chatProgress snapshots per task_id so the Graph page can replay a
    *  completed task's DAG instead of going blank as soon as the next prompt
    *  starts (#26). */
-  taskProgressSnapshots: Record<string, { event: string; agent_id?: string; tool_id?: string; ts: number; label: string; score?: number; reason?: string }[]>;
+  taskProgressSnapshots: Record<string, ChatProgressEntry[]>;
   recentCommands: string[];
   commandHistory: string[];
   addChatMessage: (msg: Partial<ChatMessage>) => void;
@@ -306,7 +404,7 @@ export interface AppState {
   // Integrations
   integrations: Integration[];
 
-  // OneProduct — Onboarding
+  // TicOSClaw — Onboarding
   onboardingComplete: boolean;
   onboardingStep: number;
   onboardingDraft: Partial<OnboardedProduct>;
@@ -323,38 +421,60 @@ export interface AppState {
    *  latest dashboard snapshot from the backend so a page reload restores
    *  what the user had on screen. */
   hydrateFromBackend: () => Promise<void>;
+  /** Recompute dashboard KPIs from live tic_orders + tasks via backend rollup. */
+  refreshDashboard: () => Promise<void>;
+  /** Cross-module status (Sistem ↔ Ajan ↔ Ürün OS ↔ Envanter ↔ TicOSClaw). */
+  integrationStatus: Record<string, any> | null;
+  loadIntegrationStatus: () => Promise<void>;
+  syncWorkspaceInventory: () => Promise<void>;
+  /** Refresh dashboard, integration status, tools; auto-link inventory when needed. */
+  refreshAllModules: () => Promise<void>;
+  /** Otonom mod — scheduler + periyodik ajan işleri. */
+  autonomyEnabled: boolean;
+  autonomyStatus: Record<string, any> | null;
+  loadAutonomyStatus: () => Promise<void>;
+  setAutonomyEnabled: (enabled: boolean) => Promise<void>;
+  patchAutonomyMode: (patch: Record<string, boolean>) => Promise<void>;
+  runAutonomySweep: () => Promise<void>;
+  runGoalLoopTick: (goalId?: string, opts?: { silent?: boolean }) => Promise<void>;
+  runSchedulerJob: (jobId: string) => Promise<void>;
+  loadTasksFromBackend: () => Promise<void>;
+  maybeAutoGoalLoop: () => Promise<void>;
+  loadApprovalsFromBackend: () => Promise<void>;
+  bootstrapApprovalsIfEmpty: () => Promise<void>;
+  syncApprovalToBackend: (approval: Approval) => Promise<void>;
   /** Soft reset: clear transient state (chat, progress, audit) while keeping
    *  products, brand identity and onboarding history. Used by sidebar
    *  "Sayfayı sıfırla". */
   resetTransientState: () => void;
   resetOnboarding: () => void;
 
-  // OneProduct — Brand Identity (agent-generated, per active product)
+  // TicOSClaw — Brand Identity (agent-generated, per active product)
   brandIdentity: BrandIdentity | null;
   brandIdentityLoading: boolean;
   brandIdentityError: string | null;
   regenerateBrandIdentity: () => Promise<void>;
 
-  // OneProduct — Product Economics (agent-generated, per active product)
+  // TicOSClaw — Product Economics (agent-generated, per active product)
   productEconomics: ProductEconomicsSnapshot | null;
   productEconomicsLoading: boolean;
   productEconomicsError: string | null;
   regenerateProductEconomics: () => Promise<void>;
   setProductEconomics: (econ: ProductEconomicsSnapshot | null) => void;
 
-  // OneProduct — Reviews
+  // TicOSClaw — Reviews
   reviews: ProductReview[];
   respondToReview: (id: string, response: string) => void;
 
-  // OneProduct — Influencers
+  // TicOSClaw — Influencers
   influencers: Influencer[];
   updateInfluencerStatus: (id: string, status: Influencer['contact_status']) => void;
 
-  // OneProduct — Experiments
+  // TicOSClaw — Experiments
   experiments: GrowthExperiment[];
   launchExperiment: (id: string) => void;
 
-  // OneProduct — Email flows
+  // TicOSClaw — Email flows
   emailFlows: EmailFlow[];
   toggleEmailFlow: (id: string) => void;
   publishEmailFlow: (id: string) => void;
@@ -516,20 +636,57 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       return { approvals: [normalized, ...s.approvals] };
     });
   },
-  approveItem: (id, note) => {
+  approveItem: async (id, note) => {
     const target = get().approvals.find((a) => a.id === id);
-    set((s) => ({
-      approvals: s.approvals.map((a) => a.id === id ? { ...a, status: 'approved' as const, reviewer_note: note || 'Onaylandı', resolved_at: new Date().toISOString() } : a),
-    }));
+    const applyLocal = () => {
+      set((s) => ({
+        approvals: s.approvals.map((a) => a.id === id ? { ...a, status: 'approved' as const, reviewer_note: note || 'Onaylandı', resolved_at: new Date().toISOString() } : a),
+      }));
+    };
+    try {
+      const q = note ? `?note=${encodeURIComponent(note)}` : '';
+      const res = await fetch(`${BASE_URL}/api/v1/approvals/${id}/approve${q}`, {
+        method: 'POST',
+        headers: backendHeaders(),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        applyLocal();
+        void get().loadApprovalsFromBackend();
+      } else {
+        applyLocal();
+      }
+    } catch {
+      applyLocal();
+    }
     get().addAuditLog({ action: 'approval.approved', actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı', details: `Onay #${id} kabul edildi` });
     pushToast({ kind: 'success', title: 'Onaylandı', body: target?.action || `#${id}` });
   },
-  rejectItem: (id, note) => {
+  rejectItem: async (id, note) => {
     const target = get().approvals.find((a) => a.id === id);
-    set((s) => ({
-      approvals: s.approvals.map((a) => a.id === id ? { ...a, status: 'rejected' as const, reviewer_note: note, resolved_at: new Date().toISOString() } : a),
-    }));
-    get().addAuditLog({ action: 'approval.rejected', actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı', details: `Onay #${id} reddedildi: ${note}` });
+    const rejectionNote = note || 'Reddedildi';
+    const applyLocal = () => {
+      set((s) => ({
+        approvals: s.approvals.map((a) => a.id === id ? { ...a, status: 'rejected' as const, reviewer_note: rejectionNote, resolved_at: new Date().toISOString() } : a),
+      }));
+    };
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/approvals/${id}/reject?note=${encodeURIComponent(rejectionNote)}`, {
+        method: 'POST',
+        headers: backendHeaders(),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        applyLocal();
+        void get().loadApprovalsFromBackend();
+      } else {
+        applyLocal();
+        pushToast({ kind: 'warn', title: 'Reddetme', body: `Backend yanıt vermedi (${res.status}) — yerel kayıt güncellendi.` });
+      }
+    } catch {
+      applyLocal();
+    }
+    get().addAuditLog({ action: 'approval.rejected', actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı', details: `Onay #${id} reddedildi: ${rejectionNote}` });
     pushToast({ kind: 'info', title: 'Reddedildi', body: target?.action || `#${id}` });
   },
   estimateApprovalImpact: async (id) => {
@@ -557,15 +714,22 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     get().addAuditLog({ action: 'tool.mode_changed', actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı', details: `${tool?.name} → ${tool?.mode}` });
   },
   loadTools: async () => {
-    try {
-      const res = await fetch(`${BASE_URL}/api/v1/tools`);
-      if (!res.ok) return;
-      const data: ToolManifest[] = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        set({ tools: data });
+    const urls = [`${BASE_URL}/api/v1/ticosclaw/tools`, `${BASE_URL}/api/v1/tools`];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, {
+          headers: backendHeaders(),
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) continue;
+        const data: ToolManifest[] = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          set({ tools: data });
+          return;
+        }
+      } catch {
+        /* try next endpoint */
       }
-    } catch {
-      // Backend unreachable — keep seed tools as fallback
     }
   },
 
@@ -748,14 +912,15 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         action: 'supervisor.command',
         actor_type: 'agent',
         actor_id: 'hermes',
-        actor_name: 'Hermes',
+        actor_name: 'TicOSClaw',
         details: `Chat → ${res.agent_outputs.length} ajan, ${res.tools_used.length} tool, ${persisted.approvalCount} onay, ${(res.confidence * 100).toFixed(0)}% güven`,
       });
+      void get().refreshAllModules();
     } catch (err) {
       set({ isThinking: false });
       const message = err instanceof Error ? err.message : String(err);
       const systemPrompt =
-        'Sen OneProduct Agent OS\'un CEO/Supervisor rolündesin. Türkçe, somut, aksiyona dönük cevap ver. ' +
+        'Sen TicOSClaw\'un CEO/Supervisor rolündesin. Türkçe, somut, aksiyona dönük cevap ver. ' +
         (product ? productBrief(product) : '');
       const enrichedUser = withProductBrief(content, product);
 
@@ -773,7 +938,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
           pushToast({
             kind: 'warn',
             title: 'Backend offline — Gemini fallback aktif',
-            body: 'Hermes/OpenClaw devre dışı; cevap doğrudan Gemini\'den alındı.',
+            body: 'TicOSClaw backend devre dışı; cevap doğrudan Gemini\'den alındı.',
           });
           return;
         }
@@ -803,7 +968,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
 
   sendUserMessageStream: async (content: string) => {
     // SSE-streamed counterpart of sendUserMessage. Pushes live progress into
-    // `chatProgress` while Hermes runs, then materialises the same chat reply
+    // `chatProgress` while TicOSClaw runs, then materialises the same chat reply
     // + Task + Audit trail the buffered path produces.
     const state = get();
     state.addChatMessage({ role: 'user', content });
@@ -819,29 +984,47 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     set({ isThinking: true, chatProgress: [] });
 
     const pushProgress = (label: string, e: ChatStreamEvent & { kind: 'progress' }) => {
-      const agent_id = (e as Record<string, unknown>).agent_id as string | undefined;
-      const tool_id = (e as Record<string, unknown>).tool_id as string | undefined;
-      const score = (e as Record<string, unknown>).score as number | undefined;
-      const reason = (e as Record<string, unknown>).reason as string | undefined;
-      const confidence = (e as Record<string, unknown>).confidence as number | undefined;
-      const cost_usd = (e as Record<string, unknown>).cost_usd as number | undefined;
+      const raw = e as Record<string, unknown>;
+      const agent_id = raw.agent_id as string | undefined;
+      const tool_id = raw.tool_id as string | undefined;
+      const score = raw.score as number | undefined;
+      const reason = raw.reason as string | undefined;
+      const confidence = raw.confidence as number | undefined;
+      const cost_usd = raw.cost_usd as number | undefined;
       set((s) => {
-        // Dedup: a server retry / reconnect can resend the same event.
-        // Drop if the most recent entry has the same (event, agent, tool)
-        // tuple within the last 500ms.
         const last = s.chatProgress[s.chatProgress.length - 1];
         const isDuplicate =
           last &&
           last.event === e.event &&
           last.agent_id === agent_id &&
           last.tool_id === tool_id &&
+          last.node_id === (raw.node_id as string | undefined) &&
           Date.now() - last.ts < 500;
         if (isDuplicate) return {} as Partial<typeof s>;
+        const entry: ChatProgressEntry = {
+          event: e.event,
+          agent_id,
+          node_id: raw.node_id as string | undefined,
+          tool_id,
+          ts: Date.now(),
+          label,
+          score,
+          reason,
+          confidence,
+          cost_usd,
+          task_id: raw.task_id as string | undefined,
+          primary: raw.primary as string | undefined,
+          supporting: raw.supporting as string[] | undefined,
+          nodes: raw.nodes as ChatProgressEntry['nodes'],
+          from_node_id: raw.from_node_id as string | undefined,
+          from_agent: raw.from_agent as string | undefined,
+          title: raw.title as string | undefined,
+          status: raw.status as string | undefined,
+          message: raw.message as string | undefined,
+          error: raw.error as string | undefined,
+        };
         return {
-          chatProgress: [
-            ...s.chatProgress,
-            { event: e.event, agent_id, tool_id, ts: Date.now(), label, score, reason, confidence, cost_usd },
-          ].slice(-25),
+          chatProgress: [...s.chatProgress, entry].slice(-40),
         };
       });
     };
@@ -904,9 +1087,10 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         action: 'supervisor.command.stream',
         actor_type: 'agent',
         actor_id: 'hermes',
-        actor_name: 'Hermes',
+        actor_name: 'TicOSClaw',
         details: `Stream → ${finalRes.agent_outputs.length} ajan, ${finalRes.tools_used.length} tool, ${(finalRes.confidence * 100).toFixed(0)}% güven`,
       });
+      void get().refreshAllModules();
     } catch (err) {
       set({ isThinking: false });
       const raw = err instanceof Error ? err.message : String(err);
@@ -954,7 +1138,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   // Integrations
   integrations: seedIntegrations,
 
-  // OneProduct — Onboarding (no product onboarded by default)
+  // TicOSClaw — Onboarding (no product onboarded by default)
   onboardingComplete: false,
   onboardingStep: 1,
   onboardingDraft: {},
@@ -994,51 +1178,14 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       set((s) => ({
         products,
         onboardedProduct: activeProduct,
-        // Keep the in-memory dashboard if it's already populated for the same
-        // product (preserves demo-fixture state across hydration races).
-        dashboard: s.dashboard && s.onboardedProduct?.product_name === activeProduct.product_name
-          ? s.dashboard
-          : makeDashboardForProduct(activeProduct),
+        dashboard: makeDashboardForProduct(activeProduct),
         onboardingComplete: true,
         currentPage: s.currentPage === 'onboarding' ? 'dashboard' : s.currentPage,
       }));
-      // Pull the latest snapshot for the active product. If the rollup table
-      // has a row, it replaces the in-memory dashboard with the persisted one
-      // (which carries `source` + `measured_at` for the Telemetry layer).
-      try {
-        const snapRes = await fetch(`${BASE_URL}/api/v1/dashboard/snapshot?product=${encodeURIComponent(activeProduct.product_name)}`, {
-          signal: AbortSignal.timeout(4000),
-        });
-        if (snapRes.ok) {
-          const data = await snapRes.json();
-          const snap = data?.snapshot;
-          if (snap) {
-            set({
-              dashboard: {
-                today_sales: snap.today_sales || 0,
-                today_orders: snap.today_orders || 0,
-                today_roas: snap.today_roas || 0,
-                avg_order_value: snap.avg_order_value || 0,
-                conversion_rate: snap.conversion_rate || 0,
-                active_campaigns: 0,
-                pending_approvals: 0,
-                active_tasks: 0,
-                critical_alerts: [],
-                recent_tasks: [],
-                agent_activity: [],
-                sales_trend: snap.sales_trend || [],
-                orders_trend: snap.orders_trend || [],
-                roas_trend: snap.roas_trend || [],
-                channel_performance: snap.channel_performance || [],
-                _isDemo: snap.source === 'demo',
-                _measured_at: snap.measured_at,
-              } as any,
-            });
-          }
-        }
-      } catch {
-        /* no snapshot endpoint or no rows yet */
-      }
+      await get().refreshDashboard();
+      await get().loadIntegrationStatus();
+      await get().refreshAllModules();
+      await get().loadAutonomyStatus();
       get().addAuditLog({
         action: 'app.hydrated',
         actor_type: 'system', actor_id: 'frontend', actor_name: 'Frontend',
@@ -1046,6 +1193,323 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       });
     } catch {
       /* backend offline — keep whatever state we already have */
+    }
+  },
+  refreshDashboard: async () => {
+    const product = get().onboardedProduct;
+    if (!product) return;
+    try {
+      const res = await fetch(
+        `${BASE_URL}/api/v1/dashboard/refresh?product=${encodeURIComponent(product.product_name)}`,
+        { method: 'POST', headers: backendHeaders(), signal: AbortSignal.timeout(8000) },
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const snap = data?.snapshot;
+      if (!snap) return;
+      set({ dashboard: dashboardFromSnapshot(snap) });
+    } catch {
+      /* backend offline — keep current dashboard */
+    }
+  },
+  integrationStatus: null,
+  loadIntegrationStatus: async () => {
+    const product = get().onboardedProduct;
+    const q = product ? `?product=${encodeURIComponent(product.product_name)}` : '';
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/workspace/status${q}`, {
+        headers: backendHeaders(),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      set({ integrationStatus: data });
+    } catch {
+      /* backend offline */
+    }
+  },
+  syncWorkspaceInventory: async () => {
+    const product = get().onboardedProduct;
+    if (!product) return;
+    try {
+      const res = await fetch(
+        `${BASE_URL}/api/v1/workspace/sync?product=${encodeURIComponent(product.product_name)}`,
+        { method: 'POST', headers: backendHeaders(), signal: AbortSignal.timeout(8000) },
+      );
+      if (!res.ok) {
+        pushToast({ kind: 'warn', title: 'Envanter senkronu', body: 'Bağlantı kurulamadı.' });
+        return;
+      }
+      await get().loadIntegrationStatus();
+      pushToast({
+        kind: 'info',
+        title: 'Envanter bağlandı',
+        body: `${product.product_name} artık stok ve sipariş modülleriyle paylaşılıyor.`,
+      });
+      get().addAuditLog({
+        action: 'inventory.synced',
+        actor_type: 'system',
+        actor_id: 'workspace_bridge',
+        actor_name: 'Workspace Bridge',
+        details: `Envanter bağlantısı: ${product.product_name}`,
+      });
+      await get().refreshDashboard();
+    } catch {
+      pushToast({ kind: 'warn', title: 'Envanter senkronu', body: 'Backend ulaşılamıyor.' });
+    }
+  },
+  refreshAllModules: async () => {
+    const product = get().onboardedProduct;
+    await Promise.all([
+      get().refreshDashboard(),
+      get().loadIntegrationStatus(),
+      get().loadTools(),
+      get().loadAutonomyStatus(),
+      get().loadTasksFromBackend(),
+      get().loadApprovalsFromBackend(),
+    ]);
+    if (get().onboardingComplete) {
+      await get().bootstrapApprovalsIfEmpty();
+    }
+    if (get().autonomyEnabled) {
+      await get().maybeAutoGoalLoop();
+    }
+    const mode = get().autonomyStatus?.mode;
+    const autoSync = mode?.auto_sync !== false;
+    const link = get().integrationStatus?.modules?.inventory?.link;
+    if (product && link && !link.synced && (get().autonomyEnabled || autoSync)) {
+      await get().syncWorkspaceInventory();
+    }
+  },
+  autonomyEnabled: true,
+  autonomyStatus: null,
+  loadAutonomyStatus: async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/autonomy/status`, {
+        headers: backendHeaders(),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      set({
+        autonomyStatus: data,
+        autonomyEnabled: data?.mode?.enabled !== false,
+      });
+    } catch {
+      /* backend offline */
+    }
+  },
+  setAutonomyEnabled: async (enabled: boolean) => {
+    set({ autonomyEnabled: enabled });
+    try {
+      await fetch(`${BASE_URL}/api/v1/autonomy/mode`, {
+        method: 'PATCH',
+        headers: { ...backendHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+        signal: AbortSignal.timeout(5000),
+      });
+      await get().loadAutonomyStatus();
+    } catch {
+      /* local toggle still applies */
+    }
+    get().addAuditLog({
+      action: enabled ? 'autonomy.enabled' : 'autonomy.disabled',
+      actor_type: 'user',
+      actor_id: 'user_1',
+      actor_name: 'Kullanıcı',
+      details: enabled ? 'Otonom mod açıldı' : 'Otonom mod kapatıldı',
+    });
+    pushToast({
+      kind: enabled ? 'success' : 'info',
+      title: enabled ? 'Otonom mod aktif' : 'Otonom mod kapalı',
+      body: enabled
+        ? 'Scheduler ve entegrasyon nabzı arka planda çalışır.'
+        : 'Zamanlanmış ajan işleri duraklatıldı.',
+    });
+    if (enabled) void get().refreshAllModules();
+  },
+  patchAutonomyMode: async (patch: Record<string, boolean>) => {
+    try {
+      await fetch(`${BASE_URL}/api/v1/autonomy/mode`, {
+        method: 'PATCH',
+        headers: { ...backendHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+        signal: AbortSignal.timeout(5000),
+      });
+      await get().loadAutonomyStatus();
+    } catch {
+      /* offline */
+    }
+  },
+  runAutonomySweep: async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/autonomy/sweep`, {
+        method: 'POST',
+        headers: backendHeaders(),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) {
+        pushToast({ kind: 'warn', title: 'Otonom tarama', body: 'Sweep başarısız.' });
+        return;
+      }
+      const data = await res.json();
+      await get().loadAutonomyStatus();
+      await get().loadApprovalsFromBackend();
+      await get().refreshAllModules();
+      const n = data?.approvals?.approved_count ?? 0;
+      pushToast({
+        kind: 'success',
+        title: 'Otonom tarama tamam',
+        body: `${data?.inventory?.count ?? 0} envanter · ${n} düşük risk onay`,
+      });
+    } catch {
+      pushToast({ kind: 'warn', title: 'Otonom tarama', body: 'Backend ulaşılamıyor.' });
+    }
+  },
+  runGoalLoopTick: async (goalId?: string, opts?: { silent?: boolean }) => {
+    try {
+      const q = goalId ? `?goal_id=${encodeURIComponent(goalId)}` : '';
+      const res = await fetch(`${BASE_URL}/api/v1/autonomy/loop/tick${q}`, {
+        method: 'POST',
+        headers: backendHeaders(),
+        signal: AbortSignal.timeout(120000),
+      });
+      if (!res.ok) {
+        if (!opts?.silent) {
+          pushToast({ kind: 'warn', title: 'Hedef döngüsü', body: 'Tick başarısız.' });
+        }
+        return;
+      }
+      const data = await res.json();
+      const results = Array.isArray(data?.results) ? data.results : [];
+      const hasApprovals = results.some((r: { approval_id?: string }) => Boolean(r?.approval_id));
+      await Promise.all([
+        get().loadAutonomyStatus(),
+        get().loadTasksFromBackend(),
+        ...(hasApprovals ? [get().loadApprovalsFromBackend()] : []),
+      ]);
+      const n = data?.dispatched ?? 0;
+      if (!opts?.silent) {
+        pushToast({
+          kind: n > 0 ? 'success' : 'info',
+          title: 'Hedef döngüsü',
+          body: n > 0 ? `${n} hedef için ajan görevi başlatıldı` : 'Bekleyen hedef yok veya cooldown aktif',
+        });
+      } else if (n > 0) {
+        get().addAuditLog({
+          action: 'autonomy.goal_loop.auto',
+          actor_type: 'system',
+          actor_id: 'goal_loop',
+          actor_name: 'Goal Loop',
+          details: `${n} hedef için otonom görev başlatıldı`,
+        });
+      }
+    } catch {
+      if (!opts?.silent) {
+        pushToast({ kind: 'warn', title: 'Hedef döngüsü', body: 'Backend ulaşılamıyor.' });
+      }
+    }
+  },
+  runSchedulerJob: async (jobId: string) => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/autonomy/jobs/${encodeURIComponent(jobId)}/run`, {
+        method: 'POST',
+        headers: backendHeaders(),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) {
+        pushToast({ kind: 'warn', title: 'Scheduler', body: `İş tetiklenemedi: ${jobId}` });
+        return;
+      }
+      await get().loadAutonomyStatus();
+      pushToast({ kind: 'success', title: 'Zamanlanmış iş', body: `${jobId} kuyruğa alındı` });
+      get().addAuditLog({
+        action: 'autonomy.scheduler.run',
+        actor_type: 'user',
+        actor_id: 'user_1',
+        actor_name: 'Kullanıcı',
+        details: jobId,
+      });
+    } catch {
+      pushToast({ kind: 'warn', title: 'Scheduler', body: 'Backend ulaşılamıyor.' });
+    }
+  },
+  maybeAutoGoalLoop: async () => {
+    const status = get().autonomyStatus;
+    if (!get().autonomyEnabled || status?.mode?.auto_goal_loop === false) return;
+    const stale = status?.goal_loop?.stale_count ?? 0;
+    if (stale <= 0) return;
+    const key = 'ticosclaw_goal_loop_auto';
+    const last = Number(sessionStorage.getItem(key) || 0);
+    const cooldownMs = 15 * 60 * 1000;
+    if (last && Date.now() - last < cooldownMs) return;
+    sessionStorage.setItem(key, String(Date.now()));
+    await get().runGoalLoopTick(undefined, { silent: true });
+  },
+  loadTasksFromBackend: async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/tasks`, {
+        headers: backendHeaders(),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) return;
+      const list = await res.json();
+      if (!Array.isArray(list)) return;
+      const fromBackend = list.map((t: Record<string, unknown>) => normalizeBackendTask(t));
+      set((s) => {
+        const backendIds = new Set(fromBackend.map((t) => t.task_id));
+        const localActive = s.tasks.filter(
+          (t) => !backendIds.has(t.task_id) && ACTIVE_TASK_STATUSES.has(t.status),
+        );
+        return { tasks: [...fromBackend, ...localActive] };
+      });
+    } catch {
+      /* offline */
+    }
+  },
+  syncApprovalToBackend: async (approval) => {
+    if (approval.status !== 'pending') return;
+    try {
+      await fetch(`${BASE_URL}/api/v1/approvals`, {
+        method: 'POST',
+        headers: backendHeaders(),
+        body: JSON.stringify(approval),
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch {
+      /* offline — local queue still works */
+    }
+  },
+  bootstrapApprovalsIfEmpty: async () => {
+    const product = get().onboardedProduct;
+    if (!product?.product_name) return;
+    const pending = get().approvals.filter((a) => a.status === 'pending' || a.status === 'estimating');
+    if (pending.length > 0) return;
+    try {
+      const q = `?product=${encodeURIComponent(product.product_name)}`;
+      const res = await fetch(`${BASE_URL}/api/v1/approvals/bootstrap${q}`, {
+        method: 'POST',
+        headers: backendHeaders(),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) return;
+      await get().loadApprovalsFromBackend();
+    } catch {
+      /* offline */
+    }
+  },
+  loadApprovalsFromBackend: async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/approvals`, {
+        headers: backendHeaders(),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return;
+      const list = await res.json();
+      if (!Array.isArray(list)) return;
+      set({ approvals: list });
+    } catch {
+      /* offline */
     }
   },
   startNewProductOnboarding: () => {
@@ -1117,14 +1581,17 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(product),
       signal: AbortSignal.timeout(3000),
-    }).catch(() => {});
+    })
+      .then(() => get().refreshAllModules())
+      .then(() => get().setAutonomyEnabled(true))
+      .catch(() => {});
     get().addChatMessage({
       role: 'assistant',
       agent_id: 'supervisor',
       content: `**${product.product_name}** onboard edildi. Pazar araştırması, marka kimliği ve fiyatlama ön analizi şimdi başlatılıyor — sonuçlar **Görevler** sayfasına düşecek.`,
-      thinking: 'Onboarding sonrası ön analiz görevi Hermes\'e gönderildi.',
+      thinking: 'Onboarding sonrası ön analiz görevi TicOSClaw\'a gönderildi.',
     });
-    // Auto-dispatch a real Hermes task. persistBackendResult will materialize
+    // Auto-dispatch a real TicOSClaw task. persistBackendResult will materialize
     // the result into Tasks + Approvals + Audit so the user sees real output.
     const onboardMessage = [
       `Yeni ürün onboard edildi: ${product.product_name} (${product.category}).`,
@@ -1145,6 +1612,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     // Kick off brand identity generation in parallel so the Brand page lands
     // populated instead of showing placeholder gray swatches.
     void get().regenerateBrandIdentity?.();
+    void get().refreshDashboard();
   },
   resetOnboarding: () => set({
     onboardingComplete: false,
@@ -1271,7 +1739,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
           });
         }
       }
-      // Fallback to the Hermes pipeline if direct call had nothing usable.
+      // Fallback to the TicOSClaw pipeline if direct call had nothing usable.
       let res: any = { content: '', agent_outputs: [] };
       let fallback_used = false;
       if (sources.length === 0) {
@@ -1684,6 +2152,16 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         audit(`${all.length} entegrasyon senkronize edildi`);
         return `🔄 ${all.length} entegrasyon senkronize edildi.`;
       }
+      case 'autonomy_sweep': {
+        void s.runAutonomySweep();
+        audit('Otonom sweep tetiklendi');
+        return '🔄 Otonom tarama başlatıldı (envanter + düşük risk onayları).';
+      }
+      case 'goal_loop_tick': {
+        void s.runGoalLoopTick();
+        audit('Hedef döngüsü tetiklendi');
+        return '🎯 Hedef döngüsü tetiklendi — stale hedefler için ajan görevi kuyruğa alınır.';
+      }
       case 'sync_integration': {
         const needle = (params?.platform || '').toLowerCase();
         const target = s.integrations.find((i) => i.platform.toLowerCase().includes(needle));
@@ -1805,7 +2283,10 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     fetch(`${BASE_URL}/api/v1/products/${encodeURIComponent(productName)}/activate`, {
       method: 'POST',
       signal: AbortSignal.timeout(3000),
-    }).catch(() => {});
+    })
+      .then(() => get().refreshAllModules())
+      .catch(() => {});
+    void get().refreshAllModules();
     get().addAuditLog({
       action: 'product.switched',
       actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı',
@@ -1945,6 +2426,9 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       },
     ];
     set((s) => ({ approvals: [...demoApprovals, ...s.approvals] }));
+    for (const ap of demoApprovals) {
+      void get().syncApprovalToBackend(ap);
+    }
     get().addAuditLog({
       action: 'demo.fixtures_loaded',
       actor_type: 'user', actor_id: 'user_1', actor_name: 'Kullanıcı',
@@ -1953,7 +2437,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   },
 
   // ─── Task retry ────────────────────────────────────────────────────────────
-  // Re-dispatches the original task description to Hermes. The new run is
+  // Re-dispatches the original task description to TicOSClaw. The new run is
   // materialized as a fresh task (so iteration history is preserved).
   retryTask: (taskId) => {
     const task = get().tasks.find((t) => t.task_id === taskId);
@@ -1978,6 +2462,7 @@ export const useStore = create<AppState>()(persist((set, get) => ({
     onboardingComplete: s.onboardingComplete,
     onboardedProduct: s.onboardedProduct,
     onboardingDraft: s.onboardingDraft,
+    autonomyEnabled: s.autonomyEnabled,
   }),
   version: 1,
 }));
@@ -2116,7 +2601,7 @@ _persistImpl = ({ title, description, priority, startedAt, response }: PersistAr
     action: 'task.materialized',
     actor_type: 'agent',
     actor_id: primary?.agent_id ?? 'hermes',
-    actor_name: primary?.agent_id ?? 'Hermes',
+    actor_name: primary?.agent_id ?? 'TicOSClaw',
     details: `"${title}" → ${response.agent_outputs.length} ajan, ${toolsCalled.length} tool, ${newApprovals.length} onay`,
   });
   for (const ap of newApprovals) {
@@ -2127,7 +2612,10 @@ _persistImpl = ({ title, description, priority, startedAt, response }: PersistAr
       actor_name: ap.agent_id,
       details: `Onay sırada: ${ap.action} (${ap.risk_level})`,
     });
+    void useStore.getState().syncApprovalToBackend(ap);
   }
+
+  void useStore.getState().refreshAllModules();
 
   return { taskId, approvalCount: newApprovals.length };
 };

@@ -25,18 +25,88 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.api.core.llm.provider import LLMMessage, MockProvider, get_llm_provider
+from apps.api.core.llm.provider import GeminiProvider, LLMMessage, MockProvider, get_llm_provider
 from apps.api.core.logging import get_logger
 from apps.api.core.openclaw.breaker import with_breaker
 from apps.api.core.openclaw.executor import register_live_adapter
+from apps.api.shopping.core.web_search import search_marketplaces, search_web_general
 
 log = get_logger(__name__)
 
 _SYSTEM_PROMPT = (
-    "Sen Türkçe konuşan bir araştırma asistanısın. Verilen soruyu Google "
+    "Sen Türkçe konuşan bir araştırma asistanısın. Verilen soruyu web "
     "araması ile doğrulayarak güncel, kaynaklı bilgi sun. Cevabı 2-4 "
     "cümleyle özet halinde Türkçe ver; tarih/sayı varsa kaynaktan al."
 )
+
+_BEDROCK_SYSTEM = (
+    "Sen Türkçe konuşan bir araştırma asistanısın. Aşağıdaki web arama "
+    "sonuçlarına dayanarak soruyu yanıtla. Kaynaklarda olmayan bilgi "
+    "uydurma. Cevabı 2-4 cümleyle özet halinde Türkçe ver."
+)
+
+
+async def _external_search(query: str) -> tuple[list[str], list[dict[str, str]]]:
+    """Gemini disi saglayicilar icin DuckDuckGo + CollectAPI aramasi."""
+    queries = [query]
+    sources: list[dict[str, str]] = []
+
+    web_sources, _ = await search_web_general(query, limit=6)
+    for src in web_sources:
+        sources.append({"uri": src.uri, "title": src.title, "snippet": src.snippet})
+
+    _, market_sources, _ = await search_marketplaces(query, limit_per_source=3)
+    for src in market_sources:
+        sources.append({"uri": src.uri, "title": src.title, "snippet": src.snippet})
+
+    return queries, sources
+
+
+async def _bedrock_search_answer(query: str, *, max_tokens: int) -> dict[str, Any]:
+    """Bedrock/OpenAI/Ollama: once web aramasi, sonra LLM ozeti."""
+    provider = get_llm_provider()
+    queries, sources = await _external_search(query)
+
+    if not sources:
+        resp = await provider.generate(
+            system=_SYSTEM_PROMPT,
+            messages=[LLMMessage(role="user", content=query)],
+            temperature=0.3,
+            max_tokens=max_tokens,
+        )
+        if resp.error and not resp.text:
+            return {**_mock({"query": query}), "degraded_reason": (resp.error or "")[:200]}
+        return {
+            "answer": resp.text,
+            "queries": queries,
+            "sources": [{"uri": s["uri"], "title": s["title"]} for s in sources],
+            "model": resp.model or "",
+            "degraded": True,
+            "degraded_reason": "no_web_sources",
+        }
+
+    context_lines = [
+        f"- {s.get('title', '')}: {s.get('snippet', '')} ({s.get('uri', '')})"
+        for s in sources[:10]
+    ]
+    user_msg = f"Soru: {query}\n\nWeb arama sonuçları:\n" + "\n".join(context_lines)
+    resp = await provider.generate(
+        system=_BEDROCK_SYSTEM,
+        messages=[LLMMessage(role="user", content=user_msg)],
+        temperature=0.3,
+        max_tokens=max_tokens,
+    )
+    if resp.error and not resp.text:
+        return {**_mock({"query": query}), "degraded_reason": (resp.error or "")[:200]}
+
+    return {
+        "answer": resp.text,
+        "queries": queries,
+        "sources": [{"uri": s["uri"], "title": s["title"]} for s in sources if s.get("uri")],
+        "model": resp.model or "",
+        "degraded": False,
+        "degraded_reason": None,
+    }
 
 
 def _mock(payload: dict[str, Any]) -> dict[str, Any]:
@@ -46,7 +116,7 @@ def _mock(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "answer": (
             f"(mock) '{query[:80]}' için canlı arama yapılamadı — "
-            "GEMINI_API_KEY ayarlayın."
+            "AWS_BEARER_TOKEN_BEDROCK ayarlayın."
         ),
         "queries": [],
         "sources": [],
@@ -74,13 +144,21 @@ async def _live(payload: dict[str, Any]) -> dict[str, Any]:
     if isinstance(provider, MockProvider):
         return _mock(payload)
 
+    if not isinstance(provider, GeminiProvider):
+        try:
+            return await _bedrock_search_answer(query, max_tokens=int(payload.get("max_tokens") or 800))
+        except Exception as exc:
+            log.warning("web_search_grounded.bedrock.exception", error=str(exc)[:200])
+            return {**_mock(payload), "degraded_reason": "bedrock_web_search_exception"}
+
     try:
+        grounding = ["google_search"] if isinstance(provider, GeminiProvider) else None
         resp = await provider.generate(
             system=_SYSTEM_PROMPT,
             messages=[LLMMessage(role="user", content=query)],
             temperature=0.3,
             max_tokens=int(payload.get("max_tokens") or 800),
-            grounding=["google_search"],
+            grounding=grounding,
         )
     except Exception as exc:
         log.warning("web_search_grounded.exception", error=str(exc)[:200])

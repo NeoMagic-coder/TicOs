@@ -17,7 +17,7 @@ services:
     environment:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
     env_file:
-      - ../env/.env.local
+      - ../backend/.env.local
     volumes:
       - ../backend/apps:/app/apps
       - api_images:/app/apps/api/_images
@@ -40,7 +40,7 @@ services:
       VITE_API_BASE_URL: http://localhost:8000
       NODE_ENV: development
     env_file:
-      - ../env/.env.local
+      - ../backend/.env.local
     volumes:
       - ../frontend:/app
       - /app/node_modules

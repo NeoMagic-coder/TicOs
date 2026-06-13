@@ -1,9 +1,8 @@
 """image_analysis live adapter.
 
-Uses Gemini Vision (google-genai SDK) to extract category/colors/material
+Uses Amazon Bedrock multimodal Converse API to extract category/colors/material
 from a product image. Falls back to a deterministic mock when no
-GEMINI_API_KEY is set or when the SDK call fails — so the onboarding UX
-keeps working in offline/demo mode.
+AWS_BEARER_TOKEN_BEDROCK is set or when the call fails.
 """
 from __future__ import annotations
 
@@ -53,7 +52,7 @@ _FALLBACK: dict[str, Any] = {
     "category": "genel",
     "colors": ["siyah"],
     "material": "karma",
-    "features": ["mock — Gemini bağlı değil"],
+    "features": ["mock — Bedrock bağlı değil"],
     "confidence": 0.4,
     "degraded": True,
 }
@@ -92,7 +91,7 @@ def _decode_image(payload: dict[str, Any]) -> tuple[bytes | None, str]:
 
 async def _adapter(payload: dict[str, Any]) -> dict[str, Any]:
     settings = get_settings()
-    if not settings.gemini_api_key:
+    if not settings.aws_bearer_token_bedrock:
         return {**_FALLBACK, "degraded_reason": "no_api_key"}
 
     image_bytes, mime = _decode_image(payload)
@@ -101,45 +100,25 @@ async def _adapter(payload: dict[str, Any]) -> dict[str, Any]:
         return {**_FALLBACK, "degraded_reason": "no_image"}
 
     product_name = str(payload.get("product_name") or "").strip()[:200]
-
-    try:
-        from google import genai
-        from google.genai import types
-    except Exception as exc:
-        log.warning("image_analysis.sdk_missing", error=str(exc)[:200])
-        return {**_FALLBACK, "degraded_reason": "sdk_missing"}
-
-    client = genai.Client(api_key=settings.gemini_api_key)
-
-    parts: list[Any] = []
-    if image_bytes:
-        try:
-            parts.append(types.Part.from_bytes(data=image_bytes, mime_type=mime))
-        except Exception as exc:
-            log.warning("image_analysis.part_failed", error=str(exc)[:200])
-            return {**_FALLBACK, "degraded_reason": "image_decode_failed"}
-    elif image_url:
-        parts.append(types.Part.from_text(text=f"Ürün görseli URL: {image_url}"))
-
     user_text = f"Ürün adı (ipucu): {product_name}" if product_name else "Bu ürünü analiz et."
-    parts.append(types.Part.from_text(text=user_text))
+    if not image_bytes and image_url:
+        user_text = f"{user_text}\nÜrün görseli URL: {image_url}"
 
     try:
-        response = await client.aio.models.generate_content(
-            model=settings.gemini_model or "gemini-2.5-flash-lite",
-            contents=[types.Content(role="user", parts=parts)],
-            config=types.GenerateContentConfig(
-                system_instruction=_SYS,
-                temperature=0.3,
-                max_output_tokens=400,
-                response_mime_type="application/json",
-            ),
+        from apps.api.core.llm.bedrock_runtime import converse
+
+        text = await converse(
+            settings.bedrock_vision_model,
+            system=_SYS,
+            user_text=user_text,
+            image_bytes=image_bytes,
+            mime=mime,
+            max_tokens=400,
         )
     except Exception as exc:
         log.warning("image_analysis.exception", error=str(exc)[:200])
         return {**_FALLBACK, "degraded_reason": "llm_exception"}
 
-    text = getattr(response, "text", None) or ""
     parsed = _parse_json(text)
     if not parsed:
         return {**_FALLBACK, "degraded_reason": "json_parse_failed"}

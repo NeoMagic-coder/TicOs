@@ -56,6 +56,7 @@ export interface Task {
   title: string;
   description: string;
   goal: string;
+  goal_id?: string | null;
   status: TaskStatus;
   priority: TaskPriority;
   assigned_agent_id: string | null;
@@ -231,7 +232,9 @@ export interface DashboardSummary {
   orders_trend?: number[];
   roas_trend?: number[];
   channel_performance: { channel: string; sales: number; orders: number }[];
-  _isDemo?: true;
+  _isDemo?: boolean;
+  _source?: 'backend' | 'demo';
+  _measured_at?: string | null;
 }
 
 export interface Alert {
@@ -273,7 +276,7 @@ export interface AuditLog {
   timestamp: string;
 }
 
-// ─── OneProduct Onboarding ───
+// ─── TicOSClaw Onboarding ───
 export type OnboardingStage = 'idea' | 'product_no_store' | 'store_growing' | 'marketplace_opt';
 
 export interface OnboardedProduct {

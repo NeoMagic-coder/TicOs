@@ -14,7 +14,7 @@ import { storeActions } from '@/lib/aos/adapter';
 // "₺28.1k → ₺36.0k") that was never referenced after onboarding completed.
 // It has been removed so a curious reader can't mistake it for live state.
 
-const GEMINI_MODEL = (import.meta.env.VITE_GEMINI_MODEL as string | undefined) || 'gemini-2.5-flash';
+const LLM_MODEL = (import.meta.env.VITE_GEMINI_MODEL as string | undefined) || 'openai.gpt-oss-120b';
 
 const TimelineStep = ({ step }) => {
   const agent = AGENT_BY_ID[step.agent] || { name: 'critic', glyph: 'CR', accent: '#9B7BFF', role: 'Critic' };
@@ -180,7 +180,13 @@ const renderFinal = (text) => {
 // ============================================================
 // Page
 // ============================================================
-const SupervisorPage = () => {
+const SupervisorPage = ({
+  navigate,
+  embedded = false,
+}: {
+  navigate?: (page: string) => void;
+  embedded?: boolean;
+}) => {
   const chatMessages = useStore((s: any) => s.chatMessages);
   const chatProgress = useStore((s: any) => s.chatProgress);
   const isThinking = useStore((s: any) => s.isThinking);
@@ -217,7 +223,7 @@ const SupervisorPage = () => {
     const steps: any[] = [];
     for (const ev of chatProgress) {
       if (ev.event === 'task_started') {
-        steps.push({ kind: 'agent_run', agent: 'supervisor', label: 'Hermes planlamaya başladı', t: 0 });
+        steps.push({ kind: 'agent_run', agent: 'supervisor', label: 'TicOSClaw planlamaya başladı', t: 0 });
       } else if (ev.event === 'plan_ready') {
         const primary = (ev as any).primary || ev.agent_id || '—';
         const supporting = Array.isArray((ev as any).supporting) ? (ev as any).supporting.join(', ') : ((ev as any).supporting || '—');
@@ -306,90 +312,89 @@ const SupervisorPage = () => {
     storeActions.sendMessageStream(text).catch(() => storeActions.sendMessage(text));
   };
 
+  const goGraph = () => {
+    if (navigate) navigate('graph');
+    else setCurrentPage('graph');
+  };
+
   return (
-    <div className="page" style={{ paddingBottom: 0, height: '100%', display: 'flex', flexDirection: 'column', maxWidth: 'none' }}>
-      <div className="page__breadcrumb mono">HOME <span>›</span> SUPERVISOR</div>
-      <div className="page__header" style={{ marginBottom: 12 }}>
+    <div className={`page supervisor-page ${embedded ? 'supervisor-page--embedded' : ''}`}>
+      {!embedded && (
+        <div className="page__breadcrumb mono">HOME <span>›</span> SUPERVISOR</div>
+      )}
+      <div className="page__header" style={embedded ? { marginBottom: 0, paddingBottom: 0, borderBottom: 'none' } : { marginBottom: 12 }}>
         <div>
-          <h1 className="page__title">
-            Supervisor Chat
-            <span className="page__title-tag">HERMES · SSE</span>
-            {llmDegraded && (
-              <span
-                className="chip chip--amber"
-                title={
-                  llmDegradedReason === 'gemini_quota_exhausted'
-                    ? 'Gemini kotası tükendi — yanıtlar MockProvider fallback ile üretiliyor.'
-                    : 'GEMINI_API_KEY yapılandırılmadı — yanıtlar MockProvider tarafından üretiliyor.'
-                }
-                style={{ marginLeft: 8 }}
-              >
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--amber)' }} />
-                MOCK LLM
-              </span>
-            )}
-            {isThinking ? (
-              <span className="chip chip--amber">
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--amber)', boxShadow: '0 0 6px var(--amber)' }} />
-                ÇALIŞIYOR
-              </span>
-            ) : chatMessages?.length ? (
-              <span className="chip chip--acid">
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--acid)', boxShadow: '0 0 6px var(--acid)' }} />
-                HAZIR
-              </span>
-            ) : (
-              <span className="chip" style={{ background: 'transparent', color: 'var(--fg-3)' }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--fg-4)' }} />
-                BEKLEMEDE
-              </span>
-            )}
-          </h1>
-          <p className="page__sub">
-            Doğal dilde komut ver — Hermes uygun ajanlara dağıtır, OpenClaw araçları çağırır, Critic puanlar.
-          </p>
+          {!embedded && (
+            <>
+              <h1 className="page__title">
+                Supervisor Chat
+                <span className="page__title-tag">HERMES · SSE</span>
+                {llmDegraded && (
+                  <span
+                    className="chip chip--amber"
+                    title={
+                      llmDegradedReason === 'gemini_quota_exhausted'
+                        ? 'LLM kotası tükendi — yanıtlar MockProvider fallback ile üretiliyor.'
+                        : 'AWS_BEARER_TOKEN_BEDROCK yapılandırılmadı — yanıtlar MockProvider tarafından üretiliyor.'
+                    }
+                    style={{ marginLeft: 8 }}
+                  >
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--amber)' }} />
+                    MOCK LLM
+                  </span>
+                )}
+                {isThinking ? (
+                  <span className="chip chip--amber">
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--amber)', boxShadow: '0 0 6px var(--amber)' }} />
+                    ÇALIŞIYOR
+                  </span>
+                ) : chatMessages?.length ? (
+                  <span className="chip chip--acid">
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--acid)', boxShadow: '0 0 6px var(--acid)' }} />
+                    HAZIR
+                  </span>
+                ) : (
+                  <span className="chip" style={{ background: 'transparent', color: 'var(--fg-3)' }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--fg-4)' }} />
+                    BEKLEMEDE
+                  </span>
+                )}
+              </h1>
+              <p className="page__sub">
+                Doğal dilde komut ver — TicOSClaw uygun ajanlara dağıtır, araçları çağırır ve sonuçları puanlar.
+              </p>
+            </>
+          )}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn--ghost" onClick={() => setShowNewTask(true)}>
+        <div className="supervisor-page__toolbar">
+          {embedded && isThinking && (
+            <span className="chip chip--violet">
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--violet)' }} />
+              LIVE
+            </span>
+          )}
+          <button className="btn btn--ghost btn--sm" onClick={() => setShowNewTask(true)}>
             <Icon name="refresh" size={12} /> Yeni Görev
           </button>
-          <button className="btn" onClick={() => setCurrentPage('graph')}>
-            <Icon name="graph" size={12} /> Grafik Görünüm
+          <button className="btn btn--sm" onClick={goGraph}>
+            <Icon name="graph" size={12} /> Görev Grafiği
           </button>
         </div>
       </div>
 
-      {/* Conversation area */}
-      <div ref={scrollRef} style={{
-        flex: 1, overflowY: 'auto',
-        background: 'var(--bg-1)',
-        border: '1px solid var(--border)',
-        borderRadius: 6,
-        padding: 20,
-        marginBottom: 12,
-      }}>
+      <div ref={scrollRef} className="supervisor-page__feed">
         {exchanges.length === 0 && !isThinking && (
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            justifyContent: 'center', minHeight: 280, gap: 16, padding: '24px 12px',
-            textAlign: 'center',
-          }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: 8,
-              background: 'rgba(155,123,255,0.12)', border: '1px solid rgba(155,123,255,0.35)',
-              display: 'grid', placeItems: 'center',
-            }}>
-              <Icon name="sparkles" size={26} color="var(--violet)" />
+          <div className="supervisor-page__empty">
+            <div className="supervisor-page__empty-icon">
+              <Icon name="sparkles" size={24} color="var(--violet)" />
             </div>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--fg-1)', marginBottom: 4 }}>
-                Supervisor'a ne sormak istiyorsun?
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--fg-3)', maxWidth: 480 }}>
-                Doğal dilde komut yaz — Hermes 22 ajan ve 77 araç arasında plan kurar, sonucu Türkçe özetler.
+              <div className="supervisor-page__empty-title">Supervisor'a ne sormak istiyorsun?</div>
+              <div className="supervisor-page__empty-sub">
+                Doğal dilde komut yaz — TicOSClaw plan kurar, araçları çağırır ve sonucu Türkçe özetler.
               </div>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 640 }}>
+            <div className="supervisor-page__prompts">
               {[
                 'Bugün için günün planını çıkar',
                 'Bekleyen tüm onayları onayla',
@@ -398,12 +403,7 @@ const SupervisorPage = () => {
                 'Anomalileri göster',
                 'Tüm entegrasyonları senkronize et',
               ].map((s) => (
-                <button
-                  key={s}
-                  className="btn btn--sm btn--ghost"
-                  onClick={() => send(s)}
-                  style={{ fontSize: 11 }}
-                >
+                <button key={s} className="btn btn--sm btn--ghost" onClick={() => send(s)}>
                   {s}
                 </button>
               ))}
@@ -411,40 +411,15 @@ const SupervisorPage = () => {
           </div>
         )}
         {exchanges.map(ex => (
-          <div key={ex.id} style={{ marginBottom: 32 }}>
-            {/* user message */}
-            <div style={{
-              display: 'flex', gap: 10, justifyContent: 'flex-end', marginBottom: 14,
-            }}>
-              <div style={{
-                maxWidth: '70%',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                padding: '10px 14px',
-                fontSize: 13,
-                color: 'var(--fg-1)',
-                lineHeight: 1.5,
-              }}>{ex.user}</div>
-              <span style={{
-                width: 28, height: 28, borderRadius: 4,
-                background: 'var(--bg-3)', border: '1px solid var(--border)',
-                display: 'grid', placeItems: 'center', color: 'var(--fg-3)', flex: 'none',
-              }}><Icon name="user" size={14} /></span>
+          <div key={ex.id} className="supervisor-page__exchange">
+            <div className="supervisor-page__user-row">
+              <div className="supervisor-page__user-bubble">{ex.user}</div>
+              <span className="supervisor-page__avatar"><Icon name="user" size={14} /></span>
             </div>
 
-            {/* execution timeline */}
             {ex.steps.length > 0 && (
-              <div style={{
-                position: 'relative', marginLeft: 6,
-                paddingLeft: 20, borderLeft: '1px dashed var(--border)',
-              }}>
-                <div style={{
-                  position: 'absolute', left: -8, top: 0,
-                  width: 14, height: 14, borderRadius: '50%',
-                  background: 'var(--bg-1)', border: '1px solid var(--violet)',
-                  display: 'grid', placeItems: 'center',
-                }}>
+              <div className="supervisor-page__timeline">
+                <div className="supervisor-page__timeline-dot">
                   <Icon name="sparkles" size={8} color="var(--violet)" />
                 </div>
                 <div className="label-eyebrow" style={{ marginBottom: 6, color: 'var(--violet)' }}>
@@ -454,45 +429,25 @@ const SupervisorPage = () => {
               </div>
             )}
 
-            {/* final answer */}
             {ex.final && (
-              <div style={{
-                marginTop: 16,
-                background: 'var(--bg-0)',
-                border: '1px solid var(--border)',
-                borderLeft: '2px solid var(--acid)',
-                borderRadius: 6,
-                padding: '14px 18px',
-              }}>
+              <div className="supervisor-page__answer">
                 <div className="label-eyebrow" style={{ marginBottom: 8, color: 'var(--acid)' }}>
                   YÖNETICI ÖZETI{ex.confidence != null ? ` · CONFIDENCE ${ex.confidence.toFixed(2)}` : ''}
                 </div>
                 <div>{typeof ex.final === 'string' ? renderFinal(ex.final) : ex.final}</div>
                 {ex.complete && (
-                  <div style={{
-                    marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border-faint)',
-                    display: 'flex', alignItems: 'center', gap: 10, fontSize: 11,
-                  }} className="mono">
+                  <div className="supervisor-page__answer-footer mono">
                     <span style={{ color: 'var(--fg-3)' }}>
                       {ex.steps?.filter((s: any) => s.kind === 'tool').length || 0} tool · {ex.steps?.length || 0} olay
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                      <button
-                        className="btn btn--sm btn--ghost"
-                        onClick={() => recordFeedback(ex.taskId, 'good')}
-                      >
+                      <button className="btn btn--sm btn--ghost" onClick={() => recordFeedback(ex.taskId, 'good')}>
                         <Icon name="check" size={10} /> İyi
                       </button>
-                      <button
-                        className="btn btn--sm btn--ghost"
-                        onClick={() => recordFeedback(ex.taskId, 'bad')}
-                      >
+                      <button className="btn btn--sm btn--ghost" onClick={() => recordFeedback(ex.taskId, 'bad')}>
                         <Icon name="x" size={10} /> Hata
                       </button>
-                      <button
-                        className="btn btn--sm"
-                        onClick={() => setCurrentPage('graph')}
-                      >
+                      <button className="btn btn--sm" onClick={goGraph}>
                         <Icon name="graph" size={10} /> DAG Aç
                       </button>
                     </span>
@@ -504,50 +459,35 @@ const SupervisorPage = () => {
         ))}
       </div>
 
-      {/* Input */}
-      <div style={{
-        background: 'var(--bg-1)',
-        border: '1px solid var(--border)',
-        borderRadius: 6,
-        padding: 10,
-        marginBottom: 12,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+      <div className="supervisor-page__composer">
+        <div className="supervisor-page__composer-meta">
           <span className="label-eyebrow" style={{ color: 'var(--violet)' }}>
             <span style={{ color: 'var(--acid)' }}>›</span> SUPERVISOR
           </span>
           <span className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>
-            mode: <span style={{ color: 'var(--acid)' }}>autonomous</span> · model: <span style={{ color: 'var(--fg-2)' }}>{GEMINI_MODEL}</span>
+            mode: <span style={{ color: 'var(--acid)' }}>autonomous</span> · model: <span style={{ color: 'var(--fg-2)' }}>{LLM_MODEL}</span>
           </span>
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <div className="supervisor-page__slash-row">
             {['/plan', '/price', '/brand', '/reviews', '/sync'].map(c => (
-              <button
-                key={c}
-                className="btn btn--sm btn--ghost"
-                title={`${c} komutunu hemen çalıştır`}
-                onClick={() => send(c)}
-              >{c}</button>
+              <button key={c} className="btn btn--sm btn--ghost" title={`${c} komutunu hemen çalıştır`} onClick={() => send(c)}>
+                {c}
+              </button>
             ))}
-          </span>
+          </div>
         </div>
         <textarea
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
           placeholder="Supervisor'a mesaj — Görev yaz veya / ile slash komut çalıştır… (Enter gönder · Shift+Enter yeni satır)"
-          style={{
-            width: '100%', minHeight: 60,
-            background: 'transparent', border: 'none', outline: 'none',
-            resize: 'vertical', color: 'var(--fg-1)', fontSize: 13,
-            lineHeight: 1.5, fontFamily: 'var(--font-sans)',
-          }}
+          className="supervisor-page__composer-input"
         />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 8, borderTop: '1px solid var(--border-faint)' }}>
+        <div className="supervisor-page__composer-footer">
           <span className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>
-            ⌘K komut paleti · ⌘↵ gönder
+            ⌘K dock · ⌘↵ gönder
           </span>
           <span style={{ marginLeft: 'auto' }} />
-          <button className="btn btn--primary" onClick={() => send(input)}>
+          <button className="btn btn--primary btn--sm" onClick={() => send(input)}>
             <Icon name="zap" size={12} /> Gönder
           </button>
         </div>

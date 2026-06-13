@@ -47,6 +47,7 @@ def init_db() -> None:
     """
     # Import models so they register with Base.metadata before create_all.
     from apps.api.core.db import models  # noqa: F401
+    from apps.api.core.db import tic_models  # noqa: F401
 
     if engine.dialect.name == "postgresql":
         try:
@@ -77,6 +78,7 @@ def _ensure_sqlite_columns() -> None:
     """
     expected: list[tuple[str, str, str]] = [
         ("tasks", "goal_id", "VARCHAR(64)"),
+        ("tic_products", "workspace_product_name", "VARCHAR(200)"),
     ]
     with engine.begin() as conn:
         for table, column, ddl in expected:

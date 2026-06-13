@@ -65,6 +65,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
         message=req.message,
         history=history,
         product_context=req.product_context,
+        language=req.language,
     )
     # Record realised cost so subsequent tasks see the spend.
     try:
@@ -151,6 +152,7 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
                 history=history,
                 product_context=req.product_context,
                 event_sink=sink,
+                language=req.language,
             )
             # Final payload mirrors ChatResponse so the client can drop it
             # straight into the chat store without a second request.

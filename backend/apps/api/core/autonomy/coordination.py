@@ -16,7 +16,11 @@ import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Awaitable, Callable
+
+from apps.api.core.logging import get_logger
+
+log = get_logger(__name__)
 
 BROADCAST = "*"
 
@@ -38,9 +42,19 @@ class CoordinationBus:
         self._queues: dict[str, asyncio.Queue[CoordinationMessage]] = defaultdict(asyncio.Queue)
         self._broadcast: asyncio.Queue[CoordinationMessage] = asyncio.Queue()
         self._history: list[CoordinationMessage] = []
+        self._relay: Callable[[CoordinationMessage], Awaitable[None]] | None = None
+
+    def set_relay(self, handler: Callable[[CoordinationMessage], Awaitable[None]] | None) -> None:
+        """Optional hook — e.g. mirror publishes onto the A2A MessageBus."""
+        self._relay = handler
 
     async def publish(self, message: CoordinationMessage) -> None:
         self._history.append(message)
+        if self._relay is not None:
+            try:
+                await self._relay(message)
+            except Exception as exc:
+                log.warning("coordination.relay_failed", error=str(exc)[:200])
         if message.recipient == BROADCAST:
             await self._broadcast.put(message)
             for q in self._queues.values():
@@ -73,3 +87,20 @@ class CoordinationBus:
         self._history.clear()
         while not self._broadcast.empty():
             self._broadcast.get_nowait()
+
+
+_COORD_BUS: CoordinationBus | None = None
+_COORD_WIRED = False
+
+
+def get_coordination_bus() -> CoordinationBus:
+    """Process singleton — auto-wires A2A relay on first access."""
+    global _COORD_BUS, _COORD_WIRED
+    if _COORD_BUS is None:
+        _COORD_BUS = CoordinationBus()
+    if not _COORD_WIRED:
+        from apps.api.core.messaging.coordination_bridge import wire_coordination_to_a2a
+
+        wire_coordination_to_a2a(_COORD_BUS)
+        _COORD_WIRED = True
+    return _COORD_BUS

@@ -10,7 +10,7 @@ import { useStore } from '@/stores/useStore';
 import { AGENT_BY_ID } from '@/data/aos/mockData';
 
 type Provider = {
-  id: 'gemini' | 'mock';
+  id: 'gemini' | 'bedrock' | 'mock';
   label: string;
   requires_base_url: boolean;
   default_base_url: string;
@@ -266,10 +266,10 @@ const Row = ({
 
 const emptyCfg = (agentId: string): AgentLLMConfig => ({
   agent_id: agentId,
-  provider: 'gemini',
+  provider: 'bedrock',
   model: '',
   base_url: '',
-  api_key_env: '',
+  api_key_env: 'AWS_BEARER_TOKEN_BEDROCK',
   temperature: 0.7,
   max_tokens: 1500,
   enabled: false,
@@ -315,7 +315,8 @@ const LLMConfigPage = () => {
 
   const enabledCount = Object.values(configs).filter((c) => c.enabled).length;
 
-  const applyGeminiKeyToAll = async () => {
+  const applyBedrockToAll = async () => {
+    const bedrock = providers.find((p) => p.id === 'bedrock');
     const targets = agents.map((a: any) => a.id || a.agent_id);
     let ok = 0;
     let fail = 0;
@@ -326,10 +327,10 @@ const LLMConfigPage = () => {
           method: 'PUT',
           headers: backendHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
-            provider: 'gemini',
-            model: cur.model || 'gemini-2.5-flash',
-            base_url: cur.base_url || '',
-            api_key_env: 'GEMINI_API_KEY',
+            provider: 'bedrock',
+            model: cur.model || bedrock?.default_model || 'openai.gpt-oss-120b',
+            base_url: cur.base_url || bedrock?.default_base_url || '',
+            api_key_env: 'AWS_BEARER_TOKEN_BEDROCK',
             temperature: cur.temperature,
             max_tokens: cur.max_tokens,
             enabled: cur.enabled,
@@ -345,7 +346,7 @@ const LLMConfigPage = () => {
       }
     }
     await refresh();
-    alert(`GEMINI_API_KEY toplu uygulandı: ${ok} başarılı, ${fail} hata`);
+    alert(`Bedrock toplu uygulandı: ${ok} başarılı, ${fail} hata`);
   };
 
   return (
@@ -361,11 +362,11 @@ const LLMConfigPage = () => {
         </div>
         <button
           type="button"
-          onClick={() => { void applyGeminiKeyToAll(); }}
-          title="Tüm ajanların API Key env değerini GEMINI_API_KEY yap"
+          onClick={() => { void applyBedrockToAll(); }}
+          title="Tüm ajanları AWS Bedrock (Mantle) sağlayıcısına bağla"
           style={{ background: 'var(--accent, #10b981)', border: 'none', color: '#fff', padding: '8px 12px', borderRadius: 4, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
         >
-          GEMINI_API_KEY'i tümüne uygula
+          Bedrock'u tümüne uygula
         </button>
       </div>
 

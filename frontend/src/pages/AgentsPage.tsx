@@ -4,7 +4,7 @@
 // 22 agents grouped by layer · live status · scheduled tasks
 // ============================================================
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Icon, StatusDot, AgentAvatar, Sparkline } from '@/components/AOS/widgets';
+import { Icon, StatusDot, AgentAvatar } from '@/components/AOS/widgets';
 import { LAYER_LABELS, AGENT_BY_ID } from '@/data/aos/mockData';
 import { useAdaptedAgents } from '@/lib/aos/adapter';
 import { useStore } from '@/stores/useStore';
@@ -115,6 +115,23 @@ const OfficePage = () => {
   useEffect(() => {
     if (!selected && AGENTS.length) setSelected(AGENTS[0]);
   }, [AGENTS, selected]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/api/v1/agents`, { signal: AbortSignal.timeout(4000) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data) && data.length) {
+          useStore.setState({ agents: data });
+        }
+      } catch {
+        // Seed agents remain visible via adapter metadata.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const quickAsk = useStore((s: any) => s.quickAsk);
 
   // Pull real cron jobs from the backend `/api/v1/automations` endpoint —
@@ -145,9 +162,12 @@ const OfficePage = () => {
       const res = await fetch(`${BASE_URL}/api/v1/agents`, { signal: AbortSignal.timeout(4000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (Array.isArray(data) && data.length) {
+        useStore.setState({ agents: data });
+      }
       pushToast({ kind: 'success', title: 'Senkron tamam', body: `${Array.isArray(data) ? data.length : 0} ajan yüklendi.` });
     } catch (e: any) {
-      pushToast({ kind: 'warn', title: 'Senkron başarısız', body: `${e?.message || e} — demo veriler kullanılıyor.` });
+      pushToast({ kind: 'warn', title: 'Senkron başarısız', body: `${e?.message || e} — yerel ajan listesi kullanılıyor.` });
     }
   };
   const suggestAgent = () => {
@@ -201,7 +221,7 @@ const OfficePage = () => {
             <span className="page__title-tag">{AGENTS.length} PROCESS</span>
           </h1>
           <p className="page__sub">
-            Tüm ajanlar, durumları ve canlı yükleri. Hermes orkestratörü görevleri burada dağıtır.
+            Tüm ajanlar, durumları ve canlı yükleri. TicOSClaw görevleri burada dağıtır.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>

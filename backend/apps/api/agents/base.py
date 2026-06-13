@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any
 
+from apps.api.core.llm.language import language_directive
 from apps.api.core.llm.per_agent import get_llm_provider_for_agent
 from apps.api.core.llm.provider import LLMMessage
 from apps.api.core.logging import get_logger
@@ -63,6 +64,7 @@ class BaseAgent(ABC):
         product_context: dict[str, Any],
         executor: OpenClawExecutor,
         ctx: ExecutionContext,
+        language: str = "tr",
     ) -> AgentOutput:
         task_id = ctx.task_id or f"adhoc_{uuid.uuid4().hex[:6]}"
         started = datetime.now(UTC)
@@ -84,7 +86,7 @@ class BaseAgent(ABC):
             "- Eğer sayı/isim/öneri istendiyse açıkça listele; '...sunulacaktır' gibi söz verme, doğrudan ver.\n"
             "- Önce 1-2 cümle özet, sonra madde işaretli (•) somut bulgular ya da öneriler.\n"
             "- Onay gereken aksiyonları satırın başında ⚠️ ile işaretle."
-        )
+        ) + language_directive(language)
         resp = await self.llm.generate(
             system=system,
             messages=history + [LLMMessage(role="user", content=message)],

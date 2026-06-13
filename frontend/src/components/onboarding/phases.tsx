@@ -199,7 +199,7 @@ function ImageAnalysisBlock({ draft, update }: { draft: Draft; update: Update })
     setPreview(data);
     setStatus({ kind: 'loading' });
     try {
-      const res = await fetch(`${BASE_URL}/api/v1/tools/execute`, {
+      const res = await fetch(`${BASE_URL}/api/v1/ticosclaw/tools/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -234,7 +234,7 @@ function ImageAnalysisBlock({ draft, update }: { draft: Draft; update: Update })
 
   return (
     <>
-      <FieldLabel code="04">Ürün fotoğrafı <span style={{ opacity: 0.6 }}>(Gemini Vision otomatik kategori önerir)</span></FieldLabel>
+      <FieldLabel code="04">Ürün fotoğrafı <span style={{ opacity: 0.6 }}>(Bedrock Vision otomatik kategori önerir)</span></FieldLabel>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <label className="btn" style={{ cursor: 'pointer' }}>
           <input
@@ -257,7 +257,7 @@ function ImageAnalysisBlock({ draft, update }: { draft: Draft; update: Update })
         )}
         <div style={{ fontSize: 12, lineHeight: 1.5, minWidth: 160 }}>
           {status.kind === 'idle' && <span style={{ opacity: 0.6 }}>JPEG / PNG · ≤ 4MB</span>}
-          {status.kind === 'loading' && <span>Gemini Vision çağrılıyor…</span>}
+          {status.kind === 'loading' && <span>Bedrock Vision çağrılıyor…</span>}
           {status.kind === 'ok' && (
             <>
               <div>kategori: <b>{status.category || '—'}</b>{status.degraded ? ' (mock)' : ''}</div>
@@ -581,7 +581,7 @@ export function Phase4Initialize({ draft, agentCount, toolCount, onLaunch }: Pha
             <span className="ob-terminal__dot" />
             <span className="ob-terminal__dot" />
             <span className="ob-terminal__dot" />
-            <span className="ob-terminal__title">oneproduct@boot — /var/log/init.log</span>
+            <span className="ob-terminal__title">ticosclaw@boot — /var/log/init.log</span>
             <span className="ob-terminal__count">{visibleLines.length}/{lines.length}</span>
           </div>
           <div className="ob-terminal__body">

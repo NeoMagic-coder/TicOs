@@ -124,15 +124,22 @@ def _row_to_llm_config(row: AgentLLMConfigRow) -> AgentLLMConfig:
     env_name = (row.api_key_env or "").strip()
     if env_name == "GEMINI_API_KEY":
         api_key_present = bool(settings.gemini_api_key)
+    elif env_name == "AWS_BEARER_TOKEN_BEDROCK":
+        api_key_present = bool(settings.aws_bearer_token_bedrock)
     elif env_name:
         api_key_present = bool(os.environ.get(env_name, ""))
     else:
         api_key_present = False
     raw_provider = (row.provider or "gemini").strip().lower()
-    provider = raw_provider if raw_provider in ("gemini", "mock") else "gemini"
-    # Strip any legacy non-Gemini model ids (e.g. "anthropic/claude-3.5-haiku")
+    provider = raw_provider if raw_provider in ("gemini", "bedrock", "mock") else "gemini"
     raw_model = (row.model or "").strip()
-    model = raw_model if (not raw_model or raw_model.startswith("gemini") or provider == "mock") else ""
+    if provider == "bedrock":
+        model = raw_model or settings.bedrock_model
+    elif provider == "mock":
+        model = raw_model or "mock"
+    else:
+        # Strip legacy non-Gemini model ids (e.g. "anthropic/claude-3.5-haiku")
+        model = raw_model if (not raw_model or raw_model.startswith("gemini")) else ""
     return AgentLLMConfig(
         agent_id=row.agent_id,
         provider=provider,  # type: ignore[arg-type]

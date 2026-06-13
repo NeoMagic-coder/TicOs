@@ -5,7 +5,7 @@
 //      capturing 16 kHz PCM via MediaRecorder.
 //   2. Audio chunks are forwarded as binary frames.
 //   3. On stop, we send {"event":"end"}. Backend transcribes via Gemini
-//      Live, runs Turkish intent detection, dispatches to Hermes, and
+//      Live, runs Turkish intent detection, dispatches to TicOSClaw, and
 //      sends back transcript + result events.
 //   4. We surface results via the existing toast stack.
 //

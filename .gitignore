@@ -49,6 +49,9 @@ MANIFEST
 
 # Environments
 .env
+.env.*
+!.env.example
+!docker/.env.prod.example
 .venv
 env/
 venv/
@@ -66,3 +69,7 @@ playwright/.cache/
 .gemini
 .claude
 .playwright-mcp
+
+# Local dev databases & generated images
+**/data/*.db
+backend/apps/_images/

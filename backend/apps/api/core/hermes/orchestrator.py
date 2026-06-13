@@ -23,8 +23,22 @@ from apps.api.core.budget import (
     record_agent_spend as _record_agent_spend,
 )
 from apps.api.core.config import get_settings
-from apps.api.core.hermes.router import RoutingDecision
+
+
+@dataclass
+class RoutingDecision:
+    primary_agent: str
+    supporting: list[str]
+    rationale: str
+    urgency: str  # low | medium | high | critical
+from apps.api.core.hermes.handoff_bridge import HandoffBridge
 from apps.api.core.hermes.task_graph import TaskGraph, TaskNode
+from apps.api.core.llm.language import (
+    DEFAULT_LANGUAGE,
+    SUPPORTED_LANGUAGES,
+    language_directive,
+    normalize_language,
+)
 from apps.api.core.llm.provider import LLMMessage, get_llm_provider
 from apps.api.core.logging import get_logger
 from apps.api.core.memory.store import add_memory
@@ -103,8 +117,11 @@ class HermesOrchestrator:
         history: list[LLMMessage] | None = None,
         product_context: dict[str, Any] | None = None,
         event_sink: EventSink | None = None,
+        language: str = DEFAULT_LANGUAGE,
     ) -> OrchestrationResult:
         import time as _time
+
+        language = normalize_language(language)
 
         _task_started_at = _time.monotonic()
         task_id = f"task_{uuid.uuid4().hex[:8]}"
@@ -155,47 +172,58 @@ class HermesOrchestrator:
         critic_escalated = False
         _traj = TrajectoryCapture(task_id=task_id, user_message=message)
 
-        while not graph.is_done():
-            ready = graph.ready()
-            if not ready:
-                break
-            wave_results = await asyncio.gather(
-                *[
-                    self._run_node_with_events(
-                        node, task_id, history or [], product_context, message, emit
-                    )
-                    for node in ready
-                ],
-                return_exceptions=True,
-            )
-            for node, res in zip(ready, wave_results, strict=True):
-                if isinstance(res, Exception):
-                    graph.fail(node.node_id, str(res))
-                    await emit("agent_failed", agent_id=node.agent_id, error=str(res)[:200])
-                    log.warning("hermes.node.failed", node=node.node_id, error=str(res))
-                else:
-                    output, called_tools, critic_score = res
-                    outputs.append(output)
-                    tools_used.extend(called_tools)
-                    graph.complete(node.node_id, output.model_dump(mode="json"))
-                    _traj.record_agent_output(output, called_tools)
-                    if critic_score is not None and output.status == "escalated":
-                        critic_escalated = True
-                    if self.settings.memory_auto_write:
-                        asyncio.create_task(add_memory(
-                            text=output.content or output.summary or "",
-                            kind="agent_output",
-                            agent_id=output.agent_id,
-                            task_id=task_id,
-                            metadata={
-                                "confidence": output.confidence,
-                                "tools": called_tools,
-                                "critic_score": critic_score.score if critic_score else None,
-                            },
-                        ))
+        handoff_bridge = HandoffBridge(
+            graph=graph,
+            task_id=task_id,
+            agents=self.agents,
+            emit=emit,
+        )
+        handoff_bridge.activate()
+        try:
+            while not graph.is_done():
+                ready = graph.ready()
+                if not ready:
+                    break
+                wave_results = await asyncio.gather(
+                    *[
+                        self._run_node_with_events(
+                            node, task_id, history or [], product_context, message, emit,
+                            language=language,
+                        )
+                        for node in ready
+                    ],
+                    return_exceptions=True,
+                )
+                for node, res in zip(ready, wave_results, strict=True):
+                    if isinstance(res, Exception):
+                        graph.fail(node.node_id, str(res))
+                        await emit("agent_failed", agent_id=node.agent_id, node_id=node.node_id, error=str(res)[:200])
+                        log.warning("hermes.node.failed", node=node.node_id, error=str(res))
+                    else:
+                        output, called_tools, critic_score = res
+                        outputs.append(output)
+                        tools_used.extend(called_tools)
+                        graph.complete(node.node_id, output.model_dump(mode="json"))
+                        _traj.record_agent_output(output, called_tools)
+                        if critic_score is not None and output.status == "escalated":
+                            critic_escalated = True
+                        if self.settings.memory_auto_write:
+                            asyncio.create_task(add_memory(
+                                text=output.content or output.summary or "",
+                                kind="agent_output",
+                                agent_id=output.agent_id,
+                                task_id=task_id,
+                                metadata={
+                                    "confidence": output.confidence,
+                                    "tools": called_tools,
+                                    "critic_score": critic_score.score if critic_score else None,
+                                },
+                            ))
+        finally:
+            handoff_bridge.deactivate()
 
         await emit("merging", outputs=len(outputs))
-        summary = await self._merge(message, outputs, routing, product_context)
+        summary = await self._merge(message, outputs, routing, product_context, language=language)
 
         # Persist trajectory fire-and-forget
         _final_confidence = sum(o.confidence for o in outputs) / len(outputs) if outputs else 0.5
@@ -270,6 +298,7 @@ class HermesOrchestrator:
         task_id: str,
         history: list[LLMMessage],
         product_context: dict[str, Any] | None,
+        language: str = DEFAULT_LANGUAGE,
     ) -> tuple[AgentOutput, list[str], float]:
         import time as _time
 
@@ -277,7 +306,7 @@ class HermesOrchestrator:
         if agent is None:
             raise RuntimeError(f"Unknown agent: {node.agent_id}")
         node.status = "running"
-        ctx = ExecutionContext(agent_id=node.agent_id, task_id=task_id)
+        ctx = ExecutionContext(agent_id=node.agent_id, task_id=task_id, node_id=node.node_id)
         tracer = get_tracer()
         _started = _time.monotonic()
         status = "error"
@@ -291,6 +320,7 @@ class HermesOrchestrator:
                     product_context=product_context or {},
                     executor=self.executor,
                     ctx=ctx,
+                    language=language,
                 )
                 status = output.status
                 span.set_attribute("agent.status", status)
@@ -320,6 +350,7 @@ class HermesOrchestrator:
         product_context: dict[str, Any] | None,
         user_message: str,
         emit: Callable[..., Awaitable[None]],
+        language: str = DEFAULT_LANGUAGE,
     ) -> tuple[AgentOutput, list[str], CriticScore | None]:
         """Wraps _run_node with progress events and a Critic self-eval pass.
 
@@ -330,7 +361,7 @@ class HermesOrchestrator:
         """
         import time as _node_timer
         _node_started = _node_timer.monotonic()
-        await emit("agent_started", agent_id=node.agent_id, title=node.title)
+        await emit("agent_started", agent_id=node.agent_id, node_id=node.node_id, title=node.title)
 
         # Paperclip-style monthly budget gate. When the agent's monthly cap
         # is exhausted we synthesise an ``escalated`` output and skip the
@@ -358,6 +389,7 @@ class HermesOrchestrator:
             await emit(
                 "agent_completed",
                 agent_id=node.agent_id,
+                node_id=node.node_id,
                 status=output.status,
                 confidence=0.0,
                 critic_score=None,
@@ -365,10 +397,12 @@ class HermesOrchestrator:
             )
             return output, [], None
 
-        output, tools_called, node_cost_usd = await self._run_node(node, task_id, history, product_context)
+        output, tools_called, node_cost_usd = await self._run_node(
+            node, task_id, history, product_context, language=language
+        )
         _node_duration_ms = (_node_timer.monotonic() - _node_started) * 1000
         for tool_id in tools_called:
-            await emit("tool_called", agent_id=node.agent_id, tool_id=tool_id)
+            await emit("tool_called", agent_id=node.agent_id, node_id=node.node_id, tool_id=tool_id)
 
         critic_score: CriticScore | None = None
         if self.critic is not None and output.status == "completed":
@@ -389,7 +423,7 @@ class HermesOrchestrator:
                 retries_left -= 1
                 await emit("agent_retry", agent_id=node.agent_id, reason=critic_score.reason)
                 output, tools_called_again, retry_cost = await self._run_node(
-                    node, task_id, history, product_context
+                    node, task_id, history, product_context, language=language
                 )
                 tools_called.extend(tools_called_again)
                 node_cost_usd += retry_cost
@@ -416,6 +450,7 @@ class HermesOrchestrator:
         await emit(
             "agent_completed",
             agent_id=node.agent_id,
+            node_id=node.node_id,
             status=output.status,
             confidence=round(output.confidence, 3),
             critic_score=critic_score.score if critic_score else None,
@@ -469,6 +504,7 @@ class HermesOrchestrator:
         outputs: list[AgentOutput],
         routing: RoutingDecision,
         product_context: dict[str, Any] | None,
+        language: str = DEFAULT_LANGUAGE,
     ) -> str:
         if not outputs:
             return "Görev için uygun ajan bulunamadı. Lütfen sorunuzu daha somut hale getirin."
@@ -480,13 +516,15 @@ class HermesOrchestrator:
                 f"### {o.agent_id} (conf {o.confidence:.2f})\n{body}"
             )
 
+        language = normalize_language(language)
+        target_language = SUPPORTED_LANGUAGES[language]
         system = (
             "Sen Hermes orchestratorsun. Aşağıda birden fazla ajanın TAM çıktıları var. "
-            "Bunları birleştirerek kullanıcıya tek bir Türkçe yanıt üret. Ajanların ürettiği "
+            f"Bunları birleştirerek kullanıcıya tek bir {target_language} yanıt üret. Ajanların ürettiği "
             "somut isimler, sayılar, öneriler KAYBOLMASIN — gerekirse aynen aktar. Çelişki varsa "
             "belirt; onay gerektiren aksiyonları satır başında ⚠️ ile işaretle. 'Ajan şunu yapacak' "
             "gibi meta cümleler kurma — ajan ne ürettiyse direkt sun."
-        )
+        ) + language_directive(language)
         product_block = ""
         if product_context:
             product_block = (

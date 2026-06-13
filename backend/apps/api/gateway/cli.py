@@ -29,7 +29,7 @@ class CLIAdapter(BaseGatewayAdapter):
         reader = asyncio.StreamReader()
         protocol = asyncio.StreamReaderProtocol(reader)
         await loop.connect_read_pipe(lambda: protocol, sys.stdin)
-        print("OneProduct Agent OS — CLI Gateway. Çıkmak için Ctrl+C.\n", flush=True)
+        print("TicOSClaw — CLI Gateway. Çıkmak için Ctrl+C.\n", flush=True)
         try:
             while True:
                 line = await reader.readline()

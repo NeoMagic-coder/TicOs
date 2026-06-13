@@ -43,8 +43,7 @@ const navGroups: NavGroup[] = [
     label: 'AJAN ALTYAPISI',
     items: [
       { id: 'agents', label: 'Agent Office', icon: Users },
-      { id: 'tasks', label: 'Görevler', icon: ListTodo },
-      { id: 'approvals', label: 'Onaylar', icon: CheckCircle },
+      { id: 'tasks', label: 'Görevler & Onaylar', icon: ListTodo },
       { id: 'scheduler', label: 'Zamanlayıcı', icon: Calendar },
       { id: 'tools', label: 'Araçlar', icon: Wrench },
       { id: 'knowledge', label: 'Bilgi', icon: BookOpen },
@@ -104,9 +103,12 @@ export function Sidebar() {
             {sidebarOpen && <div className="text-[9px] font-bold text-gray-600 tracking-widest px-3 mb-1.5 mt-1">{group.label}</div>}
             <div className="space-y-0.5">
               {group.items.map(({ id, label, icon: Icon }) => {
-                const isActive = currentPage === id;
-                const badge = id === 'approvals' ? pendingCount : id === 'tasks' ? failedTaskCount : null;
-                const badgeTone = id === 'tasks' && failedTaskCount > 0 ? 'bg-red-600' : 'bg-red-500';
+                const isActive = currentPage === id || (id === 'tasks' && currentPage === 'approvals');
+                const badge =
+                  id === 'tasks'
+                    ? (pendingCount > 0 ? pendingCount : failedTaskCount > 0 ? failedTaskCount : null)
+                    : null;
+                const badgeTone = failedTaskCount > 0 && pendingCount === 0 ? 'bg-red-600' : 'bg-red-500';
                 return (
                   <button key={id} onClick={() => setCurrentPage(id)}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
@@ -120,7 +122,7 @@ export function Sidebar() {
                     {sidebarOpen && badge != null && badge > 0 && (
                       <span
                         className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white ${badgeTone}`}
-                        title={id === 'tasks' ? `${badge} başarısız görev` : undefined}
+                        title={id === 'tasks' && failedTaskCount > 0 && pendingCount === 0 ? `${badge} başarısız görev` : id === 'tasks' && pendingCount > 0 ? `${badge} bekleyen onay` : undefined}
                       >{badge}</span>
                     )}
                   </button>

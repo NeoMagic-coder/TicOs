@@ -5,18 +5,13 @@
 #
 # Build-time env vars for the Vite bundle:
 #   --build-arg VITE_API_BASE_URL=https://api.example.com
-#   --build-arg VITE_API_KEY=xxxx   (only when backend API_KEY is set)
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 ARG VITE_API_BASE_URL=""
-ARG VITE_API_KEY=""
-ARG VITE_GEMINI_API_KEY=""
 ARG VITE_GEMINI_MODEL="gemini-2.5-flash-lite"
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL \
-    VITE_API_KEY=$VITE_API_KEY \
-    VITE_GEMINI_API_KEY=$VITE_GEMINI_API_KEY \
     VITE_GEMINI_MODEL=$VITE_GEMINI_MODEL
 
 COPY frontend/package.json frontend/package-lock.json* ./

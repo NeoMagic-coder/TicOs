@@ -21,6 +21,7 @@ from sqlalchemy import select
 
 from apps.api.core.db import session_scope
 from apps.api.core.db.models import DashboardSnapshotRow, ProductRow
+from apps.api.services.dashboard_rollup import upsert_dashboard_rollup
 from apps.api.services.task_store import get_approval_store, get_task_store
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -86,12 +87,18 @@ def _row_to_dict(row: DashboardSnapshotRow) -> dict[str, Any]:
 
 
 @router.get("/snapshot")
-async def get_snapshot(product: str | None = None) -> dict[str, Any]:
-    """Return the most recent dashboard snapshot for the given (or active) product."""
+async def get_snapshot(product: str | None = None, live: bool = False) -> dict[str, Any]:
+    """Return the most recent dashboard snapshot for the given (or active) product.
+
+    When ``live=1``, recompute from tic_orders before returning (overwrites today's row).
+    """
     with session_scope() as s:
         name = _resolve_product(s, product)
         if not name:
             raise HTTPException(status_code=404, detail="no active product")
+        if live:
+            snap = upsert_dashboard_rollup(name)
+            return {"product": name, "snapshot": snap}
         row = s.execute(
             select(DashboardSnapshotRow)
             .where(DashboardSnapshotRow.product_name == name)
@@ -99,8 +106,23 @@ async def get_snapshot(product: str | None = None) -> dict[str, Any]:
             .limit(1),
         ).scalar_one_or_none()
         if row is None:
-            return {"product": name, "snapshot": None}
+            snap = upsert_dashboard_rollup(name)
+            return {"product": name, "snapshot": snap}
+        if row.source == "demo":
+            snap = upsert_dashboard_rollup(name)
+            return {"product": name, "snapshot": snap}
         return {"product": name, "snapshot": _row_to_dict(row)}
+
+
+@router.post("/refresh")
+async def refresh_snapshot(product: str | None = None) -> dict[str, Any]:
+    """Recompute today's dashboard rollup from live order + task data."""
+    with session_scope() as s:
+        name = _resolve_product(s, product)
+        if not name:
+            raise HTTPException(status_code=404, detail="no active product")
+    snap = upsert_dashboard_rollup(name)
+    return {"product": name, "snapshot": snap}
 
 
 @router.post("/snapshot")

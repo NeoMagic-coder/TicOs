@@ -1,7 +1,7 @@
 import { useStore } from '@/stores/useStore';
 import { BASE_URL } from '@/lib/api';
-import { Plus, ArrowLeft, Clock, Zap, CheckCircle, AlertTriangle, RotateCcw, FileText, History, HelpCircle, Filter } from 'lucide-react';
-import { useState } from 'react';
+import { Plus, ArrowLeft, Clock, Zap, CheckCircle, AlertTriangle, RotateCcw, FileText, History, HelpCircle, Filter, Target } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 const STATUS_STYLE: Record<string, string> = {
   pending: 'bg-gray-700/40 text-gray-300 border-gray-600',
@@ -79,13 +79,28 @@ function PriorityBadge({ priority }: { priority: string }) {
   );
 }
 
-export function TasksPage() {
+export function TasksPage({ embedded = false }: { embedded?: boolean }) {
   const { tasks, agents, selectedTaskId, setSelectedTask, addTask, onboardedProduct } = useStore();
+  const loadTasksFromBackend = useStore((s) => s.loadTasksFromBackend);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showNewTask, setShowNewTask] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newPriority, setNewPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    void loadTasksFromBackend();
+  }, [loadTasksFromBackend]);
+
+  const refreshTasks = async () => {
+    setSyncing(true);
+    try {
+      await loadTasksFromBackend();
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const selectedTask = tasks.find((t) => t.task_id === selectedTaskId);
 
@@ -104,7 +119,8 @@ export function TasksPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
+    <div className={embedded ? 'space-y-4' : 'p-6 space-y-6 max-w-[1600px] mx-auto'}>
+      {!embedded && (
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Görevler</h1>
@@ -113,10 +129,32 @@ export function TasksPage() {
             {onboardedProduct && <span className="text-gray-400"> · Aktif ürün: <span className="text-yellow-300 font-medium">{onboardedProduct.product_name}</span></span>}
           </p>
         </div>
-        <button onClick={() => setShowNewTask(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors">
+          <button onClick={() => setShowNewTask(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors">
           <Plus size={16} /> Yeni Görev
         </button>
+        <button onClick={() => void refreshTasks()} disabled={syncing} className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300 transition-colors">
+          <RotateCcw size={14} className={syncing ? 'animate-spin' : ''} /> Senkronize
+        </button>
       </div>
+      )}
+
+      {embedded && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm text-gray-500">
+            {onboardedProduct ? (
+              <>Aktif ürün: <span className="text-yellow-300 font-medium">{onboardedProduct.product_name}</span></>
+            ) : (
+              'Tüm görevler ve durumları'
+            )}
+          </p>
+          <button onClick={() => setShowNewTask(true)} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-xs font-medium transition-colors">
+            <Plus size={14} /> Yeni Görev
+          </button>
+          <button onClick={() => void refreshTasks()} disabled={syncing} className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs text-gray-300 transition-colors">
+            <RotateCcw size={12} className={syncing ? 'animate-spin' : ''} /> Senkronize
+          </button>
+        </div>
+      )}
 
       {/* New Task Modal */}
       {showNewTask && (
@@ -198,8 +236,18 @@ export function TasksPage() {
                     {task.approval_required && (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-orange-500/20 text-orange-400">Onay Gerekli</span>
                     )}
+                    {task.goal_id && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                        <Target size={10} /> hedef
+                      </span>
+                    )}
+                    {(task.context as any)?.source === 'goal_loop' && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/15 text-emerald-300">otonom</span>
+                    )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1 line-clamp-1">{task.description}</p>
+                  <p className="text-xs text-gray-500 mt-1 line-clamp-1">
+                    {task.goal || task.description}
+                  </p>
                 </div>
                 <div className="text-right shrink-0">
                   {agent && (
@@ -228,6 +276,7 @@ function TaskDetail({ task, agents, onBack }: {
 }) {
   const agent = agents.find((a) => a.agent_id === task.assigned_agent_id);
   const retryTask = useStore((s) => s.retryTask);
+  const setCurrentPage = useStore((s) => s.setCurrentPage);
   const auditLogs = useStore((s) => s.auditLogs);
   const [tab, setTab] = useState<'result' | 'logs' | 'iterations'>('result');
   const [explanation, setExplanation] = useState<string | null>(null);
@@ -289,7 +338,7 @@ function TaskDetail({ task, agents, onBack }: {
                 onBack();
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 rounded-lg text-xs font-semibold text-indigo-300 transition-colors"
-              title="Bu görevi yeni bir Hermes çağrısıyla yeniden çalıştır"
+              title="Bu görevi yeni bir TicOSClaw çağrısıyla yeniden çalıştır"
             >
               <RotateCcw size={12} /> Yeniden Çalıştır
             </button>
@@ -316,6 +365,23 @@ function TaskDetail({ task, agents, onBack }: {
             <p className="text-sm font-medium text-white">{new Date(task.created_at).toLocaleString('tr-TR')}</p>
           </div>
         </div>
+
+        {task.goal_id && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-violet-500/30 bg-violet-500/10 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-[10px] text-violet-300/80 mb-0.5">Bağlı hedef</p>
+              <p className="text-sm font-medium text-violet-100 truncate">{task.goal || task.goal_id}</p>
+              <p className="text-[10px] text-violet-300/60 font-mono truncate mt-0.5">{task.goal_id}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCurrentPage('goals')}
+              className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600/30 hover:bg-violet-600/40 text-violet-200 border border-violet-500/40"
+            >
+              Hedeflere git
+            </button>
+          </div>
+        )}
       </div>
 
       {/* "Neden?" explanation panel */}
@@ -385,7 +451,7 @@ function TaskDetail({ task, agents, onBack }: {
               <p>Olası nedenler:</p>
               <ul className="list-disc list-inside ml-2 space-y-1 text-gray-400">
                 <li>Backend görev oluşturulurken hata verdi (Tool çağrısı tetiklenmedi).</li>
-                <li>Hermes planlama aşamasında reddetti (örn. politika ihlali).</li>
+                <li>TicOSClaw planlama aşamasında reddetti (örn. politika ihlali).</li>
                 <li>LLM provider çağrısı timeout'a uğradı.</li>
               </ul>
               <p className="mt-2">Loglar sekmesinden hata detayına bakabilir ya da <span className="text-indigo-300 font-semibold">Yeniden Çalıştır</span>'a basabilirsin.</p>

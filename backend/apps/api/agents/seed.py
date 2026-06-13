@@ -37,7 +37,7 @@ def _spec(**kwargs) -> AgentSpec:
 SEED_AGENTS: list[AgentSpec] = [
     _spec(
         agent_id="supervisor", name="CEO Agent (Supervisor)",
-        role="Orkestratör — Hermes",
+        role="Orkestratör — TicOSClaw",
         goal="Görevleri analiz et, alt ajanlara dağıt, sonuçları birleştir.",
         personality="Stratejik, organize, sakin, net.", icon="👔", color="#6366f1",
         can_delegate_to=[
@@ -56,7 +56,10 @@ SEED_AGENTS: list[AgentSpec] = [
         role="Pazar & Rakip Araştırmacısı",
         goal="Pazar büyüklüğü, talep ve rakip dinamiklerini ölç; 'girilmeli mi' skoru üret.",
         personality="Meraklı, kanıt odaklı.", icon="🔬", color="#22d3ee",
-        allowed_tools=["google_trends_query", "competitor_profile_builder", "niche_scorer", "demand_estimator"],
+        allowed_tools=[
+            "google_trends_query", "competitor_profile_builder", "niche_scorer",
+            "demand_estimator", "competitor_review_analyzer", "competitor_report_builder",
+        ],
         allowed_tool_categories=["research"],
     ),
     _spec(
@@ -128,7 +131,7 @@ SEED_AGENTS: list[AgentSpec] = [
         role="Sipariş, Kargo, Stok",
         goal="Operasyonel verimliliği koru.",
         personality="Sistematik.", icon="⚙️", color="#f97316",
-        allowed_tools=["order_list", "stock_levels_query", "stock_forecast"],
+        allowed_tools=["order_list", "stock_levels_query", "stock_forecast", "agent_handoff"],
         allowed_tool_categories=["order", "stock"],
     ),
     _spec(
@@ -188,7 +191,7 @@ SEED_AGENTS: list[AgentSpec] = [
         personality="Stratejik, sabırlı, veri odaklı müzakereci.", icon="🤝", color="#0ea5e9",
         allowed_tools=[
             "supplier_negotiation_simulator", "counter_offer_generator", "deal_evaluator",
-            "competitor_price_lookup", "cogs_calculator",
+            "competitor_price_lookup", "cogs_calculator", "agent_handoff",
         ],
         allowed_tool_categories=["negotiation", "product", "pricing"],
         can_delegate_to=["product_development_agent", "pricing_agent"],
@@ -201,7 +204,7 @@ SEED_AGENTS: list[AgentSpec] = [
         personality="Operasyonel, hız & maliyet dengesini gözeten.", icon="🚚", color="#14b8a6",
         allowed_tools=[
             "carrier_rate_comparator", "route_optimizer", "shipment_tracking_aggregator",
-            "order_list", "stock_levels_query",
+            "order_list", "stock_levels_query", "agent_handoff",
         ],
         allowed_tool_categories=["logistics", "order", "stock"],
         can_delegate_to=["operations_agent"],
@@ -213,7 +216,7 @@ SEED_AGENTS: list[AgentSpec] = [
         personality="Tepkisel, esneklik (elasticity) odaklı.", icon="📈", color="#f59e0b",
         allowed_tools=[
             "dynamic_price_engine", "competitor_price_monitor", "demand_signal_aggregator",
-            "margin_calculator", "competitor_price_lookup",
+            "margin_calculator", "competitor_price_lookup", "agent_handoff",
         ],
         allowed_tool_categories=["dynamic_pricing", "pricing"],
         can_delegate_to=["pricing_agent", "analytics_agent"],
@@ -225,7 +228,7 @@ SEED_AGENTS: list[AgentSpec] = [
         goal="Ajanlar arası önerileri birleştir, otonomi politikasını uygula, eşik altı kararları otomatik onayla.",
         personality="Politika bilinçli, risk azaltıcı, izlenebilir.", icon="🧭", color="#a855f7",
         allowed_tools=[
-            "autonomy_policy_check", "decision_log_writer", "deal_evaluator",
+            "autonomy_policy_check", "decision_log_writer", "deal_evaluator", "agent_handoff",
         ],
         allowed_tool_categories=["decision"],
         can_delegate_to=[

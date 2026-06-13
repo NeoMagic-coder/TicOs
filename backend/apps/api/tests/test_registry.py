@@ -27,6 +27,18 @@ def test_permission_scoping():
     assert not reg.is_allowed("niche_scorer", "support_agent")
 
 
+def test_competitor_analysis_tools_registered():
+    reg = get_registry()
+    analyzer = reg.get("competitor_review_analyzer")
+    report = reg.get("competitor_report_builder")
+    assert analyzer is not None and analyzer.category == "research"
+    assert report is not None and report.category == "research"
+    # Permission scoping: research agent yes, support agent no.
+    assert reg.is_allowed("competitor_review_analyzer", "market_research_agent")
+    assert reg.is_allowed("competitor_report_builder", "pricing_agent")
+    assert not reg.is_allowed("competitor_review_analyzer", "support_agent")
+
+
 @pytest.mark.parametrize("agent_id", ["supervisor", "pricing_agent", "growth_agent"])
 def test_known_agents_present(agent_id: str):
     assert get_agent_registry().get(agent_id) is not None

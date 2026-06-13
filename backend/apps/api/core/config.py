@@ -13,9 +13,16 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "OneProduct Agent OS API"
+    app_name: str = "TicOSClaw"
     environment: str = "development"
     debug: bool = True
+    docs_enabled: bool = True
+    demo_routes_enabled: bool = True
+    health_details_enabled: bool = True
+    scheduler_enabled: bool = True
+    trusted_hosts: list[str] = ["localhost", "127.0.0.1", "test", "testserver"]
+    autoresearch_program_dir: str = "apps/api/autoresearch/programs"
+    autoresearch_report_dir: str = "apps/api/autoresearch/reports"
 
     cors_origins: list[str] = [
         "http://localhost:5173",
@@ -27,9 +34,9 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5175",
     ]
 
-    # LLM provider selection: "gemini" | "mock" | "" (auto-detect)
-    # Auto-detect order: Gemini (if GEMINI_API_KEY set) → Mock
-    llm_provider: str = "gemini"
+    # LLM provider selection: "gemini" | "bedrock" | "mock" | "" (auto-detect)
+    # Auto-detect order: Bedrock (if AWS_BEARER_TOKEN_BEDROCK set) → Gemini (if GEMINI_API_KEY set) → Mock
+    llm_provider: str = ""
 
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
@@ -40,8 +47,47 @@ class Settings(BaseSettings):
         "gemini-2.5-flash",
     ]
 
-    # fal.ai — image generation fallback when Gemini quota is exhausted or
-    # billing is not enabled. Set FAL_API_KEY to activate.
+    # AWS Bedrock — alternative LLM provider via bearer token auth.
+    # Set AWS_BEARER_TOKEN_BEDROCK to activate. When empty, provider falls back
+    # to mock with degraded:true. base_url defaults to an OpenAI-compatible
+    # proxy; override to point at any Bedrock proxy/gateway.
+    aws_bearer_token_bedrock: str = ""
+    bedrock_model: str = "openai.gpt-oss-120b"
+    # Tried in order on error/429. First entry == primary model.
+    bedrock_fallback_models: list[str] = [
+        "deepseek.v3.2",
+        "qwen.qwen3-235b-a22b-2507",
+        "mistral.mistral-large-3-675b-instruct",
+        "openai.gpt-oss-20b",
+        "google.gemma-3-27b-it",
+        "deepseek.v3.1",
+        "qwen.qwen3-32b",
+        "minimax.minimax-m2.1",
+        "moonshotai.kimi-k2.5",
+        "mistral.ministral-3-14b-instruct",
+        "google.gemma-3-12b-it",
+        "nvidia.nemotron-nano-12b-v2",
+    ]
+    bedrock_base_url: str = "https://bedrock-mantle.us-east-1.api.aws"
+    bedrock_region: str = "us-east-1"
+    # Bedrock Runtime — images, embeddings, vision (same bearer token).
+    bedrock_image_model: str = "stability.stable-image-core-v1:1"
+    bedrock_image_fallback_models: list[str] = [
+        "stability.stable-image-ultra-v1:0",
+        "amazon.titan-image-generator-v2:0",
+    ]
+    bedrock_vision_model: str = "us.anthropic.claude-3-5-haiku-20241022-v1:0"
+    bedrock_mantle_vision_model: str = "moonshotai.kimi-k2.5"
+    bedrock_embedding_model: str = "amazon.titan-embed-text-v2:0"
+    # Mantle has no /images/generations — leave empty.
+    bedrock_mantle_image_model: str = ""
+    # Image provider: "" (auto) | "bedrock" | "fal" | "placeholder"
+    image_provider: str = ""
+    image_placeholder_fallback: bool = True
+    # When false, skip Bedrock Runtime image probe (instant placeholder if enabled).
+    bedrock_image_probe: bool = True
+
+    # fal.ai — optional image fallback when Bedrock fails.
     fal_api_key: str = ""
     fal_image_model: str = "fal-ai/flux/schnell"  # fast + cheap default
 
@@ -60,8 +106,8 @@ class Settings(BaseSettings):
     # SQLite by default; override with e.g. postgresql+psycopg://... via env.
     database_url: str = "sqlite:///apps/api/data/app.db"
 
-    # Vector memory
-    embedding_model: str = "gemini-embedding-001"  # 768-dim via output_dimensionality
+    # Vector memory — Bedrock Titan embeddings (768-dim via dimensions param).
+    embedding_model: str = "amazon.titan-embed-text-v2:0"
     embedding_dim: int = 768
     memory_auto_write: bool = True
 
@@ -149,13 +195,15 @@ class Settings(BaseSettings):
 
     # Observability — OpenTelemetry + Prometheus.
     otel_enabled: bool = True
-    otel_service_name: str = "oneproduct-api"
+    otel_service_name: str = "ticosclaw-api"
     # OTLP/HTTP traces endpoint (OTel Collector forwards to Tempo).
     otel_exporter_otlp_endpoint: str = "http://otel-collector:4318/v1/traces"
 
     @field_validator(
         "gemini_api_key",
         "gemini_model",
+        "aws_bearer_token_bedrock",
+        "bedrock_model",
         mode="before",
     )
     @classmethod

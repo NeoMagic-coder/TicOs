@@ -1,16 +1,10 @@
-"""Voice WebSocket endpoint — Gemini Live bridge.
+"""Voice WebSocket endpoint — text intent bridge (Bedrock-backed orchestrator).
 
-``WS /ws/voice`` accepts audio chunks (binary 16-bit PCM @ 16 kHz, or base64
-inside a JSON envelope) from the client, forwards them to Gemini Live's
-bidirectional streaming endpoint, receives the transcript back, runs it
-through a lightweight Turkish intent detector, and dispatches matched
-intents to the existing Hermes orchestrator. The client receives one or
-more JSON status messages over the same socket.
-
-When ``GEMINI_API_KEY`` is unset (MockProvider mode) the socket still
-works: the audio is dropped and the *text* field of an incoming JSON
-envelope is treated as the transcript. This lets the frontend prototype
-the flow with the browser's built-in ``SpeechRecognition`` as a stopgap.
+``WS /ws/voice`` accepts audio chunks or direct text commands, runs Turkish
+intent detection, and dispatches matched intents to the Hermes orchestrator
+(Bedrock LLM). Live audio transcription requires Gemini Live and is skipped
+when only ``AWS_BEARER_TOKEN_BEDROCK`` is configured — use ``{"event":"text"}``
+or browser SpeechRecognition as a stopgap.
 
 Wire format (client → server)
     Binary frame: raw PCM bytes (16 kHz, mono, s16le).
@@ -49,8 +43,6 @@ _GEMINI_LIVE_MODEL = "gemini-2.0-flash-live-001"
 # ─── Intent detection (Python port of the frontend Turkish substring matcher) ──
 
 _INTENTS: list[tuple[re.Pattern[str], str, dict[str, Any] | None]] = [
-    (re.compile(r"fiyat.*(düş|dus|indir|azalt).*?%?\s*(\d+)", re.I), "pricing_adjust", {"direction": "down"}),
-    (re.compile(r"fiyat.*(art|yüksel|yuksel|zam).*?%?\s*(\d+)", re.I), "pricing_adjust", {"direction": "up"}),
     (re.compile(r"\bmarka\b.*(oluştur|olustur|üret|uret|yenile|yeniden)", re.I), "regenerate_brand", None),
     (re.compile(r"trendyol.*(listele|listeleme|yükle|yukle|gönder|gonder)", re.I), "trendyol_list", None),
     (re.compile(r"(tüm|tum|hepsi|bekleyen).*onay.*(onayla|kabul)", re.I), "approve_all", None),
@@ -64,6 +56,18 @@ def detect_intent(text: str) -> dict[str, Any] | None:
     ``None``."""
     if not text:
         return None
+    if "fiyat" in text.casefold():
+        direction = None
+        if re.search(r"(düş|dus|indir|azalt)", text, re.I):
+            direction = "down"
+        elif re.search(r"(art|yüksel|yuksel|zam)", text, re.I):
+            direction = "up"
+        if direction:
+            pct_match = re.search(r"(?:%|yüzde\s*)?(\d+)", text, re.I)
+            params: dict[str, Any] = {"direction": direction}
+            if pct_match:
+                params["pct"] = int(pct_match.group(1))
+            return {"intent": "pricing_adjust", "params": params}
     for pattern, intent, base in _INTENTS:
         m = pattern.search(text)
         if not m:

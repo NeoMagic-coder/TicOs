@@ -2,16 +2,17 @@
   {
     "tool_id": "brand_visual_generator",
     "name": "Marka Görseli Üret",
-    "description": "Gemini image modeli ile ürün/ambiance/moodboard görseli üretir.",
+    "description": "AWS Bedrock Stability Image veya yer tutucu SVG ile ürün/moodboard görseli üretir.",
     "category": "brand",
-    "provider": "gemini",
+    "provider": "bedrock",
     "auth_required": true,
-    "timeout_ms": 60000,
+    "timeout_ms": 20000,
     "input_schema": {
       "type": "object",
       "properties": {
         "prompt": {"type": "string", "description": "Türkçe veya İngilizce görsel tarifi"},
-        "model": {"type": "string", "description": "Opsiyonel — varsayılan gemini-3-pro-image-preview (Nano Banana 2)"}
+        "model": {"type": "string", "description": "Opsiyonel — varsayılan stability.stable-image-core-v1:1"},
+        "variation_index": {"type": "integer", "description": "Varyasyon indeksi (0-3)"}
       },
       "required": ["prompt"]
     },
@@ -21,12 +22,13 @@
         "url": {"type": "string"},
         "filename": {"type": "string"},
         "mime": {"type": "string"},
-        "size_bytes": {"type": "number"}
+        "size_bytes": {"type": "number"},
+        "degraded": {"type": "boolean"}
       }
     },
     "allowed_agents": ["brand_identity_agent", "marketing_agent", "supervisor"],
     "cost_estimate_usd": 0.039,
     "mode": "live",
-    "tags": ["brand", "image", "gemini"]
+    "tags": ["brand", "image", "bedrock"]
   }
 ]

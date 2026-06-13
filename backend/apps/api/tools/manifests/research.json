@@ -218,5 +218,153 @@
       "grounding",
       "search"
     ]
+  },
+  {
+    "tool_id": "competitor_review_analyzer",
+    "name": "Rakip Yorum Analizi",
+    "description": "Rakip ürün yorumlarını analiz eder: duygu, övgü/şikayet temaları ve fırsatlar.",
+    "category": "research",
+    "provider": "gemini",
+    "auth_required": false,
+    "timeout_ms": 30000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "reviews": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "product": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string",
+          "default": "tr"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "overall_sentiment": {
+          "type": "string",
+          "enum": ["pos", "neg", "neu"]
+        },
+        "positive_themes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "negative_themes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "opportunities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "allowed_agents": [
+      "market_research_agent",
+      "review_reputation_agent",
+      "supervisor"
+    ],
+    "cost_estimate_usd": 0.004,
+    "mode": "live",
+    "tags": [
+      "research",
+      "competitor",
+      "review"
+    ]
+  },
+  {
+    "tool_id": "competitor_report_builder",
+    "name": "Rakip Analiz Raporu",
+    "description": "Fiyat verisi + yorum içgörülerini tek rekabet raporunda birleştirir.",
+    "category": "research",
+    "provider": "gemini",
+    "auth_required": false,
+    "timeout_ms": 30000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "product": {
+          "type": "string"
+        },
+        "price_data": {
+          "type": "object"
+        },
+        "review_insights": {
+          "type": "object"
+        },
+        "competitors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "language": {
+          "type": "string",
+          "default": "tr"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "positioning": {
+          "type": "string"
+        },
+        "price_recommendation": {
+          "type": "string"
+        },
+        "strengths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "weaknesses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "allowed_agents": [
+      "market_research_agent",
+      "pricing_agent",
+      "supervisor"
+    ],
+    "cost_estimate_usd": 0.005,
+    "mode": "live",
+    "tags": [
+      "research",
+      "competitor",
+      "report"
+    ]
   }
 ]

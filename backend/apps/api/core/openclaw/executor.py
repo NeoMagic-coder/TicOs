@@ -42,6 +42,7 @@ class ToolNotFound(Exception):
 class ExecutionContext:
     agent_id: str
     task_id: str | None = None
+    node_id: str | None = None
     audit: list[ToolCallLog] = field(default_factory=list)
     budget_usd: float | None = None
     cost_so_far_usd: float = 0.0
@@ -85,11 +86,12 @@ class OpenClawExecutor:
             )
 
         tracer = get_tracer()
+        enriched = self._enrich_payload(payload, ctx)
         with tracer.start_as_current_span(f"tool.{tool_id}") as span:
             span.set_attribute("tool.id", tool_id)
             span.set_attribute("agent.id", agent_id)
             span.set_attribute("tool.mode", tool.mode.value)
-            result = await self._run_with_retry(tool, payload, ctx)
+            result = await self._run_with_retry(tool, enriched, ctx)
             span.set_attribute("tool.status", result.status)
             span.set_attribute("tool.duration_ms", result.duration_ms)
             span.set_attribute("tool.cost_usd", result.cost_usd)
@@ -111,7 +113,7 @@ class OpenClawExecutor:
                 duration_ms=result.duration_ms,
                 status=result.status,
                 cost_usd=result.cost_usd,
-                input=payload,
+                input=enriched,
                 output=result.output,
             )
         )
@@ -190,14 +192,24 @@ class OpenClawExecutor:
             error=last_error,
         )
 
+    @staticmethod
+    def _enrich_payload(payload: dict[str, Any], ctx: ExecutionContext) -> dict[str, Any]:
+        enriched = dict(payload)
+        enriched.setdefault("from_agent", ctx.agent_id)
+        if ctx.task_id:
+            enriched.setdefault("correlation_id", ctx.task_id)
+        if ctx.node_id:
+            enriched.setdefault("source_node_id", ctx.node_id)
+        return enriched
+
     async def _invoke(self, tool: ToolManifest, payload: dict[str, Any]) -> dict[str, Any]:
+        adapter = _LIVE_ADAPTERS.get(tool.tool_id)
+        if adapter is not None:
+            return await adapter(payload)
         if tool.mode.value == "mock":
             await asyncio.sleep(0.05)
             return mock_response(tool, payload)
-        adapter = _LIVE_ADAPTERS.get(tool.tool_id)
-        if adapter is None:
-            raise NotImplementedError(f"Live adapter for {tool.tool_id} not registered")
-        return await adapter(payload)
+        raise NotImplementedError(f"Live adapter for {tool.tool_id} not registered")
 
 
 _executor: OpenClawExecutor | None = None

@@ -19,12 +19,20 @@ def _product_block(ctx: dict[str, Any]) -> str:
     )
 
 
+HANDOFF_HINT = (
+    "\n\nA2A devir: Başka ajana iş aktarmak için `agent_handoff` tool'unu kullan. "
+    "Alt görev için intent=`delegate_subtask`, to_agent=<hedef_ajan_id>, "
+    "payload={message: 'görev metni', title: 'kısa başlık'}. "
+    "Bilgilendirme için intent=`notify_event`; veri isteği için `request_data`."
+)
+
+
 class CEOAgent(BaseAgent):
     primary_tools: list[str] = []
 
     def system_prompt(self, product_context: dict[str, Any]) -> str:
         return (
-            "Sen OneProduct Agent OS'un CEO/Supervisor ajanısın. Hermes orchestrator çatısı altında "
+            "Sen TicOSClaw'un CEO/Supervisor ajanısın. TicOSClaw orkestrasyonu altında "
             "kullanıcı talebini analiz eder, hangi alt ajanları görevlendireceğini açıklar ve sonuçları "
             "tek bir executive summary olarak sunarsın. Yanıtlar Türkçe, kısa, aksiyona dönüktür.\n\n"
             f"{_product_block(product_context)}\n\n"
@@ -33,13 +41,20 @@ class CEOAgent(BaseAgent):
 
 
 class MarketResearchAgent(BaseAgent):
-    primary_tools = ["google_trends_query", "competitor_profile_builder", "niche_scorer"]
+    primary_tools = [
+        "google_trends_query",
+        "competitor_profile_builder",
+        "niche_scorer",
+        "competitor_report_builder",
+    ]
     grounding = ["google_search", "collectapi"]
 
     def system_prompt(self, ctx: dict[str, Any]) -> str:
         return (
             "Sen Market Research Agent'sın. Pazar büyüklüğü, rakip yoğunluğu, talep eğilimi ve niş "
-            "skorunu çıkarırsın. Tahminlerinde her zaman güven aralığı belirt.\n\n" + _product_block(ctx)
+            "skorunu çıkarırsın. Rakip analizi istendiğinde fiyat verisini (avg/min/max) ve yorum "
+            "içgörülerini (övgü/şikayet temaları, fırsatlar) tek raporda birleştir. "
+            "Tahminlerinde her zaman güven aralığı belirt.\n\n" + _product_block(ctx)
         )
 
 
@@ -158,13 +173,15 @@ class EmailCRMAgent(BaseAgent):
 
 
 class OperationsAgent(BaseAgent):
-    primary_tools = ["order_list", "stock_levels_query", "stock_forecast"]
+    primary_tools = ["order_list", "stock_levels_query", "stock_forecast", "agent_handoff"]
 
     def system_prompt(self, ctx: dict[str, Any]) -> str:
         return (
             "Sen Operations Agent'sın. Sipariş akışı, stok seviyeleri, kargo performansı ve iade "
             "oranlarını izlersin. Reorder noktasını lead time + safety stock ile hesapla; kritik "
-            "stok seviyelerini ⚠️ ile işaretle.\n\n" + _product_block(ctx)
+            "stok seviyelerini ⚠️ ile işaretle."
+            + HANDOFF_HINT
+            + "\n\n" + _product_block(ctx)
         )
 
 
@@ -230,6 +247,7 @@ class NegotiationAgent(BaseAgent):
         "supplier_negotiation_simulator",
         "counter_offer_generator",
         "deal_evaluator",
+        "agent_handoff",
     ]
 
     def system_prompt(self, ctx: dict[str, Any]) -> str:
@@ -239,7 +257,9 @@ class NegotiationAgent(BaseAgent):
             "müzakerede: hedef fiyat, walk-away noktası, mevcut teklif ve önerdiğin karşı "
             "teklifi açıkça belirt. Anlaşma kapanıyorsa toplam tasarrufu % olarak ver; "
             "anlaşma yapılamıyorsa 'walk-away' gerekçesini yaz. Riskli/eşik üstü anlaşmaları "
-            "⚠️ ile işaretleyip onaya bırak.\n\n" + _product_block(ctx)
+            "⚠️ ile işaretleyip onaya bırak."
+            + HANDOFF_HINT
+            + "\n\n" + _product_block(ctx)
         )
 
 
@@ -248,6 +268,7 @@ class LogisticsAgent(BaseAgent):
         "carrier_rate_comparator",
         "route_optimizer",
         "shipment_tracking_aggregator",
+        "agent_handoff",
     ]
 
     def system_prompt(self, ctx: dict[str, Any]) -> str:
@@ -257,7 +278,9 @@ class LogisticsAgent(BaseAgent):
             "optimizasyonu yapar; gönderi takip durumlarını agrega edersin. Önerilerinde her "
             "zaman: hız vs maliyet trade-off'unu, ortalama teslim süresini ve gecikme riski "
             "olan gönderi sayısını belirt. ≥%5 maliyet artışı getiren taşıyıcı değişimini "
-            "⚠️ ile onaya işaretle.\n\n" + _product_block(ctx)
+            "⚠️ ile onaya işaretle."
+            + HANDOFF_HINT
+            + "\n\n" + _product_block(ctx)
         )
 
 
@@ -266,6 +289,7 @@ class DynamicPricingAgent(BaseAgent):
         "dynamic_price_engine",
         "competitor_price_monitor",
         "demand_signal_aggregator",
+        "agent_handoff",
     ]
 
     def system_prompt(self, ctx: dict[str, Any]) -> str:
@@ -274,12 +298,14 @@ class DynamicPricingAgent(BaseAgent):
             "değişimleri ve stok seviyesi sinyallerinden anlık fiyat ayarı önerirsin. Her "
             "öneride: mevcut fiyat, önerilen fiyat, Δ%, beklenen gelir uplift'i ve güven "
             "skorunu raporla. Marj %22'nin altına düşürmemelisin. %5 üstü fiyat değişimi "
-            "⚠️ onay gerektirir.\n\n" + _product_block(ctx)
+            "⚠️ onay gerektirir."
+            + HANDOFF_HINT
+            + "\n\n" + _product_block(ctx)
         )
 
 
 class AutonomousDecisionAgent(BaseAgent):
-    primary_tools = ["autonomy_policy_check", "decision_log_writer"]
+    primary_tools = ["autonomy_policy_check", "decision_log_writer", "agent_handoff"]
 
     def system_prompt(self, ctx: dict[str, Any]) -> str:
         return (
@@ -288,7 +314,9 @@ class AutonomousDecisionAgent(BaseAgent):
             "(1) aksiyon türü ve büyüklüğünü, (2) risk seviyesini, (3) ilgili ajanların güven "
             "skorlarını değerlendir. Otomatik onaylanan her kararı decision_log_writer ile "
             "kaydet. Politika eşiğini aşan veya çelişkili öneriler içeren kararları ⚠️ ile "
-            "insan onayına eskalate et.\n\n" + _product_block(ctx)
+            "insan onayına eskalate et."
+            + HANDOFF_HINT
+            + "\n\n" + _product_block(ctx)
         )
 
 

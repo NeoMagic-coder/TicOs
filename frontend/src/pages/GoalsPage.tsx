@@ -7,6 +7,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { BASE_URL, backendHeaders } from '@/lib/api';
 import { AGENT_BY_ID } from '@/data/aos/mockData';
+import { useStore } from '@/stores/useStore';
 
 type Goal = {
   id: string;
@@ -33,7 +34,7 @@ const ownerLabel = (id: string | null): string => {
   return AGENT_BY_ID?.[id]?.name || id;
 };
 
-const GoalRow = ({ node, depth, onDelete }: { node: GoalNode; depth: number; onDelete: (id: string) => void }) => {
+const GoalRow = ({ node, depth, onDelete, onAdvance }: { node: GoalNode; depth: number; onDelete: (id: string) => void; onAdvance: (id: string) => void }) => {
   const g = node.goal;
   return (
     <>
@@ -67,13 +68,22 @@ const GoalRow = ({ node, depth, onDelete }: { node: GoalNode; depth: number; onD
             <span>Bağlı görev: {node.task_count}</span>
           </div>
         </div>
+        {g.status === 'active' && (
+          <button
+            type="button"
+            onClick={async () => {
+              await onAdvance(g.id);
+            }}
+            style={{ fontSize: 10, padding: '4px 10px', background: 'var(--accent)', border: 'none', color: '#000', borderRadius: 3, cursor: 'pointer' }}
+          >Otonom ilerle</button>
+        )}
         <button
           onClick={() => onDelete(g.id)}
           style={{ fontSize: 10, padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', color: 'var(--fg-3)', borderRadius: 3, cursor: 'pointer' }}
         >Sil</button>
       </div>
       {node.children.map((child) => (
-        <GoalRow key={child.goal.id} node={child} depth={depth + 1} onDelete={onDelete} />
+        <GoalRow key={child.goal.id} node={child} depth={depth + 1} onDelete={onDelete} onAdvance={onAdvance} />
       ))}
     </>
   );
@@ -86,6 +96,10 @@ const GoalsPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', parent_goal_id: '', target_metric: '', target_value: '' });
+  const autonomyStatus = useStore((s: any) => s.autonomyStatus);
+  const runGoalLoopTick = useStore((s: any) => s.runGoalLoopTick);
+  const loadAutonomyStatus = useStore((s: any) => s.loadAutonomyStatus);
+  const goalLoop = autonomyStatus?.goal_loop;
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -107,6 +121,12 @@ const GoalsPage = () => {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void loadAutonomyStatus(); }, [loadAutonomyStatus]);
+
+  const handleAdvance = async (goalId: string) => {
+    await runGoalLoopTick(goalId);
+    await refresh();
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,7 +172,25 @@ const GoalsPage = () => {
           onClick={() => setShowForm((s) => !s)}
           style={{ padding: '8px 14px', background: 'var(--accent)', color: '#000', border: 'none', borderRadius: 4, fontSize: 12, cursor: 'pointer' }}
         >{showForm ? 'İptal' : '+ Yeni Hedef'}</button>
+        <button
+          type="button"
+          onClick={() => void runGoalLoopTick()}
+          style={{ padding: '8px 14px', background: 'transparent', color: 'var(--fg-2)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12, cursor: 'pointer' }}
+        >Hedef döngüsü</button>
       </div>
+
+      {goalLoop && (
+        <div className="panel" style={{ marginBottom: 12 }}>
+          <div className="panel__body" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 11, color: 'var(--fg-2)' }}>
+            <span>Otonom hedef döngüsü: {goalLoop.enabled ? 'aktif' : 'kapalı'}</span>
+            <span>{goalLoop.active_goals ?? 0} aktif hedef</span>
+            <span>{goalLoop.stale_count ?? 0} bekleyen (stale)</span>
+            {goalLoop.last_tick_at && (
+              <span>Son tick: {new Date(goalLoop.last_tick_at).toLocaleString('tr-TR')}</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <form onSubmit={handleCreate} className="panel" style={{ marginBottom: 12 }}>
@@ -210,7 +248,7 @@ const GoalsPage = () => {
       )}
 
       {!loading && !error && tree.map((n) => (
-        <GoalRow key={n.goal.id} node={n} depth={0} onDelete={handleDelete} />
+        <GoalRow key={n.goal.id} node={n} depth={0} onDelete={handleDelete} onAdvance={handleAdvance} />
       ))}
     </div>
   );

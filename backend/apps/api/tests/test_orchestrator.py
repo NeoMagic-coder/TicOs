@@ -6,14 +6,13 @@ fallback — plus tool audit propagation and confidence aggregation.
 from __future__ import annotations
 
 import json
-import warnings
 
 import pytest
 
 from apps.api.agents.registry import AgentRegistry
 from apps.api.agents.seed import SEED_AGENTS
 from apps.api.core.hermes.orchestrator import HermesOrchestrator
-from apps.api.core.hermes.router import route as _keyword_route
+from apps.api.tests._keyword_route import keyword_route as _keyword_route
 from apps.api.core.llm.provider import LLMMessage, LLMResponse, LLMProvider
 from apps.api.core.openclaw.executor import OpenClawExecutor
 from apps.api.core.openclaw.registry import get_registry
@@ -25,10 +24,12 @@ class StubLLM(LLMProvider):
 
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.systems: list[str] = []
 
     async def generate(self, *, system, messages, temperature=0.7, max_tokens=1024, grounding=None) -> LLMResponse:
         last_user = next((m.content for m in reversed(messages) if m.role != "model"), "")
         self.calls.append(last_user[:80])
+        self.systems.append(system or "")
 
         if "Critic-Agent" in (system or ""):
             # Always return a high score so retries don't fire in tests.
@@ -49,11 +50,7 @@ class StubLLM(LLMProvider):
             if marker in user_msg:
                 user_msg = user_msg.split(marker, 1)[1].split("KULLANILABİLİR")[0].strip()
             available = [s.agent_id for s in SEED_AGENTS if s.active]
-            # _keyword_route is the deprecated router kept as a deterministic
-            # planner stand-in for tests; suppress its DeprecationWarning here.
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", DeprecationWarning)
-                decision = _keyword_route(user_msg, available)
+            decision = _keyword_route(user_msg, available)
             nodes = [{
                 "id": "n1",
                 "agent_id": decision.primary_agent,
@@ -177,6 +174,31 @@ async def test_product_info_routes_to_product_development_agent(orchestrator):
     assert result.summary
     # Product dev agent's primary tools: alibaba_supplier_search, cogs_calculator
     assert any(t in result.tools_used for t in ("alibaba_supplier_search", "cogs_calculator"))
+
+
+@pytest.mark.asyncio
+async def test_language_directive_reaches_agents_and_merge(orchestrator):
+    result = await orchestrator.handle(
+        message="Fiyatları rakiplerle karşılaştır",
+        history=[],
+        product_context={"product_name": "yanmaz tencere"},
+        language="en",
+    )
+    assert result.summary
+    # Agent run + merge system prompts must carry the English directive;
+    # planner/critic prompts are exempt (internal JSON contracts).
+    directive_hits = [s for s in orchestrator.llm.systems if "English" in s]
+    assert directive_hits, "language directive missing from all system prompts"
+
+
+@pytest.mark.asyncio
+async def test_default_language_keeps_prompts_turkish(orchestrator):
+    await orchestrator.handle(
+        message="Fiyatları rakiplerle karşılaştır",
+        history=[],
+        product_context={"product_name": "yanmaz tencere"},
+    )
+    assert not any("ÇIKTI DİLİ" in s for s in orchestrator.llm.systems)
 
 
 @pytest.mark.asyncio

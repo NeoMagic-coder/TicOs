@@ -2,30 +2,12 @@
 // ============================================================
 // AGENT.OS — Shell: Menubar, Sidebar, ProcessStrip, CmdPalette
 // ============================================================
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Icon, StatusDot, AgentAvatar } from '@/components/AOS/widgets';
 import { useStore } from '@/stores/useStore';
+import { HUB_SECTIONS } from '@/lib/navigation/hubs';
 
-const SUGGESTIONS = [
-  'Bugün için günün planını çıkar',
-  'Bekleyen tüm onayları onayla',
-  'Marka kimliğini yeniden üret',
-  'En kritik 3 görev hangisi?',
-  'Anomalileri göster',
-  'Tüm entegrasyonları senkronize et',
-];
-
-// ============================================================
-// Top Menubar — macOS-style system status
-// ============================================================
-const STAGE_LABELS: Record<string, string> = {
-  idea: 'Fikir',
-  product_no_store: 'Ürün Hazır',
-  store_growing: 'Mağaza Büyüyor',
-  marketplace_opt: 'Ölçeklendirme',
-};
-
-const Menubar = ({ sysClock, runningCount, busyCount, budgetBurn, confidence, onCmd }) => {
+const Menubar = ({ sysClock, runningCount, busyCount, onCmd }) => {
   const product = useStore((s: any) => s.onboardedProduct);
   const isThinking = useStore((s: any) => s.isThinking);
   const dashboard = useStore((s: any) => s.dashboard);
@@ -36,17 +18,9 @@ const Menubar = ({ sysClock, runningCount, busyCount, budgetBurn, confidence, on
   const setCurrentPage = useStore((s: any) => s.setCurrentPage);
   const setOnboardingStep = useStore((s: any) => s.setOnboardingStep);
   const resetOnboardingDraft = useStore((s: any) => s.resetOnboardingDraft);
-  const sendUserMessage = useStore((s: any) => s.sendUserMessage);
   const productName = product?.product_name || 'Ürün yok';
-  const market = product?.target_market || '—';
-  const stageLabel = product ? (STAGE_LABELS[product.stage] || product.stage) : '—';
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [suggestionIdx, setSuggestionIdx] = useState(0);
   const switcherRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const id = setInterval(() => setSuggestionIdx((i) => (i + 1) % SUGGESTIONS.length), 6000);
-    return () => clearInterval(id);
-  }, []);
   useEffect(() => {
     if (!switcherOpen) return;
     const onDocClick = (e: MouseEvent) => {
@@ -56,35 +30,29 @@ const Menubar = ({ sysClock, runningCount, busyCount, budgetBurn, confidence, on
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [switcherOpen]);
   const backend = (() => {
-    if (backendStatus === 'online') return { text: 'Backend: online', dot: 'var(--acid)', title: 'Backend ulaşılabilir' };
+    if (backendStatus === 'online') return { label: 'Bağlı', dot: 'var(--acid)', title: 'Backend ulaşılabilir' };
     if (backendStatus === 'offline') return {
-      text: `Backend: çevrimdışı${fallbackActive ? ' — fallback aktif' : ''}`,
-      dot: fallbackActive ? 'var(--amber)' : '#ef4444',
-      title: fallbackActive ? 'Backend çevrimdışı — Gemini fallback aktif.' : 'Backend çevrimdışı — AI çağrıları başarısız olacak.',
+      label: fallbackActive ? 'Fallback' : 'Çevrimdışı',
+      dot: fallbackActive ? 'var(--amber)' : 'var(--rose)',
+      title: fallbackActive ? 'Backend çevrimdışı — LLM proxy fallback aktif.' : 'Backend çevrimdışı.',
     };
-    return { text: 'Backend: kontrol ediliyor', dot: 'var(--fg-3)', title: 'Backend durumu kontrol ediliyor' };
+    return { label: '…', dot: 'var(--fg-4)', title: 'Backend durumu kontrol ediliyor' };
   })();
   return (
     <div className="menubar">
       <div className="menubar__brand">
-        <span className="menubar__brand-mark" />
-        <span>AGENT.OS</span>
-        <span style={{ color: 'var(--fg-3)', fontWeight: 400, marginLeft: 4 }}>OneProduct</span>
+        <img className="menubar__brand-mark" src="/ticosclaw-icon.png" alt="" aria-hidden="true" />
+        <span>TicOSClaw</span>
       </div>
-      <div className="menubar__sep" />
       <div className="menubar__items">
         <div className="menubar__item" ref={switcherRef} style={{ position: 'relative' }}>
-          <span className="menubar__item-label">Aktif Ürün</span>
           <button
             type="button"
             aria-label={`Aktif ürünü değiştir: ${productName}`}
             aria-haspopup="listbox"
             aria-expanded={switcherOpen}
             onClick={() => setSwitcherOpen((o) => !o)}
-            style={{
-              background: 'transparent', border: 'none', color: 'inherit',
-              font: 'inherit', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 4,
-            }}
+            className="menubar__product-trigger"
           >
             <span className="menubar__item-value">{productName}</span>
             <Icon name="chevron-down" size={10} color="var(--fg-3)" />
@@ -152,20 +120,13 @@ const Menubar = ({ sysClock, runningCount, busyCount, budgetBurn, confidence, on
             </div>
           )}
         </div>
-        <div className="menubar__item menubar__item--md-hide" title={`Pazar: ${market}`}>
-          <span className="menubar__item-label">Pazar</span>
-          <span className="menubar__item-value">{market}</span>
-        </div>
-        <div className="menubar__item menubar__item--lg-hide" title={`Aşama: ${stageLabel}`}>
-          <span className="menubar__item-label">Aşama</span>
-          <span className="menubar__item-value">{stageLabel}</span>
-        </div>
         {isThinking && (
-          <div className="menubar__item">
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--violet)', boxShadow: '0 0 6px var(--violet)' }} />
-            <span className="menubar__item-value mono" style={{ color: 'var(--violet)' }}>HERMES ÇALIŞIYOR</span>
+          <div className="menubar__item menubar__item--thinking">
+            <span className="menubar__status-dot menubar__status-dot--violet" />
+            <span className="menubar__item-value">İşleniyor</span>
           </div>
         )}
+        <AutonomyMenubarPill />
         <LlmDegradedPill />
       </div>
       <div className="menubar__spacer" />
@@ -175,52 +136,61 @@ const Menubar = ({ sysClock, runningCount, busyCount, budgetBurn, confidence, on
           aria-label="Komut paletini aç"
           title="Komut paletini aç (Ctrl/⌘+K)"
           onClick={onCmd}
-          className="menubar__item"
-          style={{ background: 'transparent', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer' }}
+          className="menubar__item menubar__cmd-btn"
         >
           <Icon name="search" size={12} color="var(--fg-3)" />
-          <span className="menubar__item-label">Komut</span>
-          <span className="btn__kbd" style={{ marginLeft: 2 }}>⌘K</span>
-        </button>
-        <button
-          type="button"
-          title="Bu öneriyi Supervisor'a gönder"
-          onClick={() => sendUserMessage?.(SUGGESTIONS[suggestionIdx])}
-          className="menubar__item"
-          style={{
-            background: 'rgba(140,100,220,0.10)', border: '1px solid rgba(140,100,220,0.25)',
-            color: 'var(--violet)', font: 'inherit', cursor: 'pointer',
-            padding: '2px 8px', borderRadius: 4, maxWidth: 240,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}
-        >
-          {SUGGESTIONS[suggestionIdx]}
+          <span className="btn__kbd">⌘K</span>
         </button>
         <div className="menubar__item" title={backend.title}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: backend.dot, boxShadow: `0 0 6px ${backend.dot}` }} />
-          <span className="menubar__item-value">{backend.text}</span>
+          <span className="menubar__status-dot" style={{ background: backend.dot }} />
+          <span className="menubar__item-value">{backend.label}</span>
         </div>
-        <div className="menubar__item">
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--acid)', boxShadow: '0 0 6px var(--acid)' }} />
-          <span className="menubar__item-value tnum">{runningCount} çalışıyor</span>
-        </div>
-        <div className="menubar__item menubar__item--md-hide" title={`${busyCount} meşgul`}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--amber)' }} />
-          <span className="menubar__item-value tnum">{busyCount} meşgul</span>
-        </div>
-        <div className="menubar__item menubar__item--lg-hide" title={`Bütçe: ${budgetBurn}`}>
-          <span className="menubar__item-label">Bütçe</span>
-          <span className="menubar__item-value">{budgetBurn}</span>
-        </div>
-        <div className="menubar__item menubar__item--lg-hide" title={`Confidence: ${confidence}`}>
-          <span className="menubar__item-label">Conf</span>
-          <span className="menubar__item-value">{confidence}</span>
-        </div>
-        <div className="menubar__item menubar__item--sm-hide" title={`Saat: ${sysClock}`}>
+        {(runningCount > 0 || busyCount > 0) && (
+          <div className="menubar__item menubar__item--md-hide" title={`${runningCount} çalışıyor · ${busyCount} meşgul`}>
+            <span className="menubar__item-value tnum">{runningCount + busyCount} ajan</span>
+          </div>
+        )}
+        <div className="menubar__item menubar__item--lg-hide menubar__item--sm-hide" title={`Saat: ${sysClock}`}>
           <span className="menubar__item-value tnum">{sysClock}</span>
         </div>
       </div>
     </div>
+  );
+};
+
+/** Otonom mod — menubar kısayolu */
+const AutonomyMenubarPill = () => {
+  const autonomyEnabled = useStore((s: any) => s.autonomyEnabled);
+  const autonomyStatus = useStore((s: any) => s.autonomyStatus);
+  const setCurrentPage = useStore((s: any) => s.setCurrentPage);
+  const setAutonomyEnabled = useStore((s: any) => s.setAutonomyEnabled);
+  const stale = autonomyStatus?.goal_loop?.stale_count ?? 0;
+  const schedulerRunning = autonomyStatus?.scheduler?.running === true;
+  const jobCount = autonomyStatus?.job_count ?? 0;
+  const tip = autonomyEnabled
+    ? `Otonom mod aktif · ${jobCount} zamanlanmış iş${stale ? ` · ${stale} hedef bekliyor` : ''}. Tıkla: Otonom konsol. Shift+tık: modu kapat.`
+    : 'Otonom mod kapalı — scheduler duraklatıldı. Tıkla: Otonom konsol. Shift+tık: modu aç.';
+  return (
+    <button
+      type="button"
+      className={`menubar__item menubar__item--autonomy ${autonomyEnabled ? 'menubar__item--autonomy-on' : ''}`}
+      title={tip}
+      onClick={(e) => {
+        if (e.shiftKey) {
+          void setAutonomyEnabled(!autonomyEnabled);
+          return;
+        }
+        setCurrentPage('autonomy_console');
+      }}
+    >
+      <span
+        className={`menubar__status-dot ${autonomyEnabled ? 'menubar__status-dot--acid' : ''} ${autonomyEnabled && schedulerRunning ? 'menubar__autonomy-dot--live' : ''}`}
+      />
+      <span className="menubar__item-value">{autonomyEnabled ? 'Otonom' : 'Manuel'}</span>
+      {autonomyEnabled && stale > 0 && (
+        <span className="menubar__autonomy-stale">{stale}</span>
+      )}
+    </button>
   );
 };
 
@@ -231,12 +201,12 @@ const LlmDegradedPill = () => {
   const reason = useStore((s: any) => s.llmDegradedReason);
   if (!degraded) return null;
   const tip = reason === 'gemini_quota_exhausted'
-    ? 'Gemini kotası tükendi — yanıtlar MockProvider fallback ile üretiliyor.'
-    : 'GEMINI_API_KEY yapılandırılmadı — yanıtlar MockProvider tarafından üretiliyor.';
+    ? 'LLM kotası tükendi — yanıtlar MockProvider fallback ile üretiliyor.'
+    : 'AWS_BEARER_TOKEN_BEDROCK yapılandırılmadı — yanıtlar MockProvider tarafından üretiliyor.';
   return (
-    <div className="menubar__item" title={tip} style={{ borderRadius: 4, background: 'rgba(255,177,61,0.12)', border: '1px solid rgba(255,177,61,0.35)' }}>
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--amber)', boxShadow: '0 0 6px var(--amber)' }} />
-      <span className="menubar__item-value mono" style={{ color: 'var(--amber)' }}>MOCK LLM</span>
+    <div className="menubar__item menubar__item--degraded" title={tip}>
+      <span className="menubar__status-dot menubar__status-dot--amber" />
+      <span className="menubar__item-value">Mock LLM</span>
     </div>
   );
 };
@@ -244,34 +214,6 @@ const LlmDegradedPill = () => {
 // ============================================================
 // Sidebar
 // ============================================================
-const NAV_SECTIONS = [
-  {
-    label: 'Sistem',
-    items: [
-      { id: 'dashboard',  label: 'Dashboard',         icon: 'dashboard' },
-      { id: 'supervisor', label: 'Supervisor',        icon: 'chat', badge: 'live' },
-      { id: 'graph',      label: 'Görev Grafiği',     icon: 'graph', badge: '3' },
-    ],
-  },
-  {
-    label: 'Ajan Altyapısı',
-    items: [
-      { id: 'office',     label: 'Agent Office',      icon: 'agents', badge: '22' },
-      { id: 'approvals',  label: 'Onaylar',           icon: 'approvals', badge: 'alert:5' },
-      { id: 'tools',      label: 'Araçlar',           icon: 'tools' },
-      { id: 'audit',      label: 'Audit Log',         icon: 'audit' },
-    ],
-  },
-  {
-    label: 'Ürün OS',
-    items: [
-      { id: 'brand',      label: 'Marka',             icon: 'brand' },
-      { id: 'pricing',    label: 'Fiyat & Finans',    icon: 'money' },
-      { id: 'growth',     label: 'Büyüme',            icon: 'growth' },
-      { id: 'onboarding', label: 'Onboarding',        icon: 'onboarding' },
-    ],
-  },
-];
 
 const Sidebar = ({ active, onNavigate }) => {
   const agents = useStore((s) => s.agents);
@@ -280,6 +222,7 @@ const Sidebar = ({ active, onNavigate }) => {
   const tasks = useStore((s) => s.tasks);
   const activeProduct = useStore((s) => s.onboardedProduct);
   const products = useStore((s: any) => s.products);
+  const autonomyStatus = useStore((s: any) => s.autonomyStatus);
   const switchToProduct = useStore((s: any) => s.switchToProduct);
   const startNewProductOnboarding = useStore((s: any) => s.startNewProductOnboarding);
   const resetTransientState = useStore((s: any) => s.resetTransientState);
@@ -299,42 +242,35 @@ const Sidebar = ({ active, onNavigate }) => {
   const liveTools = tools.filter((t) => t.mode === 'live').length;
   const mockTools = tools.length - liveTools;
 
-  const SECTIONS = [
-    {
-      label: 'Sistem',
-      items: [
-        { id: 'dashboard',  label: 'Dashboard',         icon: 'dashboard' },
-        { id: 'supervisor', label: 'Supervisor',        icon: 'chat', badge: 'live' },
-        { id: 'graph',      label: 'Görev Grafiği',     icon: 'graph', badge: runningTasks ? String(runningTasks) : null },
-      ],
-    },
-    {
-      label: 'Ajan Altyapısı',
-      items: [
-        { id: 'office',     label: 'Agent Office',      icon: 'agents', badge: String(agents.length) },
-        { id: 'org',        label: 'Org Şeması',        icon: 'agents' },
-        { id: 'goals',      label: 'Hedefler',          icon: 'graph' },
-        { id: 'budgets',    label: 'Bütçeler',          icon: 'money' },
-        { id: 'llm_config', label: 'LLM Modelleri',     icon: 'tools' },
-        { id: 'tasks',      label: 'Görevler',          icon: 'graph', badge: runningTasks ? String(runningTasks) : null },
-        { id: 'approvals',  label: 'Onaylar',           icon: 'approvals', badge: pendingApprovals ? 'alert:' + pendingApprovals : null },
-        { id: 'tools',      label: 'Araçlar',           icon: 'tools' },
-        { id: 'integrations', label: 'Entegrasyonlar',  icon: 'tools' },
-        { id: 'audit',      label: 'Audit Log',         icon: 'audit' },
-        { id: 'autonomy_console', label: 'Autonomy Console', icon: 'zap', badge: 'live' },
-      ],
-    },
-    {
-      label: 'Ürün OS',
-      items: [
-        { id: 'products',   label: 'Ürünler',           icon: 'bag', badge: products && products.length ? String(products.length) : null },
-        { id: 'brand',      label: 'Marka',             icon: 'brand' },
-        { id: 'pricing',    label: 'Fiyat & Finans',    icon: 'money' },
-        { id: 'growth',     label: 'Büyüme',            icon: 'growth' },
-        { id: 'onboarding', label: 'Onboarding',        icon: 'onboarding' },
-      ],
-    },
-  ];
+  const pageBadge = (pageId: string) => {
+    if (pageId === 'supervisor') return 'live';
+    if (pageId === 'graph' && runningTasks) return String(runningTasks);
+    if (pageId === 'office') return String(agents.length);
+    if (pageId === 'tasks') {
+      if (pendingApprovals) return 'alert:' + pendingApprovals;
+      if (runningTasks) return String(runningTasks);
+      return null;
+    }
+    if (pageId === 'autonomy_console') return 'live';
+    if (pageId === 'goals') {
+      const stale = autonomyStatus?.goal_loop?.stale_count ?? 0;
+      if (stale > 0) return `alert:${stale}`;
+      return null;
+    }
+    if (pageId === 'products' && products?.length) return String(products.length);
+    if (pageId === 'shopping') return 'new';
+    return null;
+  };
+
+  const SECTIONS = HUB_SECTIONS.map((sec) => ({
+    label: sec.label,
+    items: sec.pages.map((p) => ({
+      id: p.id,
+      label: p.label,
+      icon: p.icon,
+      badge: pageBadge(p.id),
+    })),
+  }));
 
   const productName = activeProduct?.product_name || 'Aktif ürün yok';
   const productSku = activeProduct?.category || '—';
@@ -435,7 +371,7 @@ const Sidebar = ({ active, onNavigate }) => {
           <div key={sec.label}>
             <div className="sidebar__section">{sec.label}</div>
             {sec.items.map(it => {
-              const isActive = active === it.id;
+              const isActive = active === it.id || (it.id === 'tasks' && active === 'approvals');
               const isAlert = it.badge && String(it.badge).startsWith('alert:');
               const badgeVal = isAlert ? it.badge.split(':')[1] : it.badge;
               const isLive = it.badge === 'live';
@@ -444,7 +380,7 @@ const Sidebar = ({ active, onNavigate }) => {
                   type="button"
                   key={it.id}
                   className={`nav-item ${isActive ? 'nav-item--active' : ''}`}
-                  onClick={() => onNavigate(it.id)}
+                  onClick={() => onNavigate(it.id === 'tasks' && pendingApprovals > 0 ? 'approvals' : it.id)}
                   aria-current={isActive ? 'page' : undefined}
                   aria-label={it.id === 'supervisor' ? 'Chat' : it.label}
                   style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer' }}
@@ -472,7 +408,7 @@ const Sidebar = ({ active, onNavigate }) => {
       <div className="sidebar__footer">
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--fg-2)' }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--acid)' }} />
-          Hermes · OpenClaw
+          TicOSClaw
         </div>
         <div>{agents.length} ajan · {tools.length} araç</div>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -490,17 +426,14 @@ const Sidebar = ({ active, onNavigate }) => {
 const ProcessStrip = ({ agents, budgetBurn }: { agents: any[]; budgetBurn?: string }) => {
   const tasks = useStore((s: any) => s.tasks);
   const chatProgress = useStore((s: any) => s.chatProgress);
-  const auditLogs = useStore((s: any) => s.auditLogs);
   const isThinking = useStore((s: any) => s.isThinking);
 
-  // Active = agents currently running progress events OR have an in-progress task.
   const liveAgentIds = new Set<string>([
     ...chatProgress.filter((p: any) => p.event === 'agent_started').map((p: any) => p.agent_id).filter(Boolean),
     ...tasks.filter((t: any) => ['in_progress', 'assigned', 'waiting_tool_result'].includes(t.status))
             .map((t: any) => t.assigned_agent_id).filter(Boolean),
   ]);
 
-  // Strip out agents marked completed during this run.
   for (const p of chatProgress) {
     if (p.event === 'agent_completed' && p.agent_id) liveAgentIds.delete(p.agent_id);
   }
@@ -509,57 +442,35 @@ const ProcessStrip = ({ agents, budgetBurn }: { agents: any[]; budgetBurn?: stri
     liveAgentIds.size > 0
       ? agents.filter((a: any) => liveAgentIds.has(a.id))
       : agents.filter((a: any) => a.status === 'running' || a.status === 'busy')
-  ).slice(0, 8);
+  ).slice(0, 6);
 
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 1200);
-    return () => clearInterval(id);
-  }, []);
-  // Per-agent load: in-progress task count → 35-95% mapped, with a tiny pulse.
-  const driftedLoad = (a: any) => {
-    const myTasks = tasks.filter((t: any) => t.assigned_agent_id === a.id && ['in_progress', 'assigned', 'waiting_tool_result'].includes(t.status)).length;
-    const base = liveAgentIds.has(a.id) ? 55 + Math.min(40, myTasks * 12) : Math.min(40, myTasks * 10) + 8;
-    const seed = (a.pid.charCodeAt(2) + tick) % 7;
-    return Math.max(6, Math.min(96, base + (seed - 3)));
-  };
+  if (!active.length && !isThinking) {
+    return (
+      <div className="procstrip procstrip--idle">
+        <span className="procstrip__hint">Hazır</span>
+        {budgetBurn && budgetBurn !== '$0.00/h' && (
+          <span className="procstrip__meta tnum">{budgetBurn}</span>
+        )}
+      </div>
+    );
+  }
 
-  const recentToolCalls = chatProgress.filter((p: any) => p.event === 'tool_called').length;
-  const totalCalls = recentToolCalls > 0 ? recentToolCalls : Math.min(99, auditLogs.length);
-  const activeDag = isThinking ? 1 : 0;
   return (
     <div className="procstrip">
-      <div className="procstrip__label">PROCESSES</div>
       <div className="procstrip__items">
-        {active.map(a => {
-          const load = driftedLoad(a);
-          return (
-            <div key={a.pid} className="procstrip__item" title={`${a.name} · ${a.lastTool}`}>
-              <StatusDot status={a.status} size={6} />
-              <span style={{ color: a.accent, fontWeight: 600 }}>{a.pid}</span>
-              <span style={{ color: 'var(--fg-2)' }}>{a.name.toLowerCase()}</span>
-              <div className="procstrip__bar">
-                <div className="procstrip__bar-fill" style={{
-                  width: load + '%',
-                  background: a.accent,
-                  transition: 'width 1.2s linear'
-                }} />
-              </div>
-              <span style={{ color: 'var(--fg-3)' }} className="tnum">{load}%</span>
-            </div>
-          );
-        })}
+        {isThinking && (
+          <span className="procstrip__item procstrip__item--orchestrator">Orchestrator</span>
+        )}
+        {active.map(a => (
+          <div key={a.pid} className="procstrip__item" title={a.name}>
+            <StatusDot status={a.status} size={6} />
+            <span>{a.name}</span>
+          </div>
+        ))}
       </div>
-      <div className="procstrip__sys">
-        <div className="procstrip__sys-item">
-          <Icon name="cpu" size={12} color="var(--fg-3)" />
-          <span>orchestrator: <span style={{ color: 'var(--fg-1)' }} className="tnum">{activeDag}</span> dag · <span style={{ color: 'var(--fg-1)' }} className="tnum">{totalCalls}</span> tool calls</span>
-        </div>
-        <div className="procstrip__sys-item">
-          <Icon name="zap" size={12} color="var(--amber)" />
-          <span style={{ color: 'var(--fg-1)' }} className="tnum">{budgetBurn || '$0.00/h'}</span>
-        </div>
-      </div>
+      {budgetBurn && (
+        <span className="procstrip__meta tnum" title="Son 1 saat maliyeti">{budgetBurn}</span>
+      )}
     </div>
   );
 };
@@ -570,6 +481,8 @@ const ProcessStrip = ({ agents, budgetBurn }: { agents: any[]; budgetBurn?: stri
 const CMD_ITEMS = [
   { group: 'Hızlı Komut', items: [
     { id: 'plan',        title: 'Bugünün planını çıkar',                  hint: 'Supervisor günü planlar' },
+    { id: 'sweep',       title: 'Otonom tarama çalıştır',                 hint: 'Envanter sync + düşük risk onay' },
+    { id: 'goals-tick',  title: 'Hedef döngüsünü tetikle',                  hint: 'Stale hedefler için ajan görevi' },
     { id: 'pricing',     title: 'Fiyat optimizasyonu çalıştır',           hint: 'Tüm SKU\'lar için rakip taraması' },
     { id: 'reviews',     title: 'Yeni yorumları topla ve yanıtla',        hint: 'Trendyol + Shopify + Hepsiburada' },
     { id: 'reorder',     title: 'Reorder öneri raporu',                   hint: 'Operations + Logistics' },
@@ -579,7 +492,7 @@ const CMD_ITEMS = [
     { id: 'go-dash',     title: 'Dashboard\'a git',                       hint: '⌘1' },
     { id: 'go-graph',    title: 'Görev Grafiği\'ne git',                  hint: '⌘2' },
     { id: 'go-office',   title: 'Agent Office\'e git',                    hint: '⌘3' },
-    { id: 'go-approvals',title: 'Onaylar\'a git',                         hint: '⌘4' },
+    { id: 'go-tasks',    title: 'Görevler & Onaylar\'a git',              hint: '⌘4' },
     { id: 'go-tools',    title: 'Araçlar\'a git',                         hint: '⌘5' },
   ]},
 ];
@@ -622,6 +535,10 @@ const CmdPalette = ({ open, onClose, onNavigate }) => {
     if (it.id.startsWith('go-')) {
       const target = it.id.replace('go-', '').replace('dash', 'dashboard');
       onNavigate(target);
+    } else if (it.id === 'sweep') {
+      void useStore.getState().runAutonomySweep();
+    } else if (it.id === 'goals-tick') {
+      void useStore.getState().runGoalLoopTick();
     } else {
       // Hızlı komut: supervisor sayfasına geç + mesajı backend'e yolla
       onNavigate('supervisor');
@@ -681,7 +598,6 @@ const CmdPalette = ({ open, onClose, onNavigate }) => {
           <span>↑↓ gezin</span>
           <span>↵ çalıştır</span>
           <span>ESC kapat</span>
-          <span style={{ marginLeft: 'auto', color: 'var(--acid)' }}>● Hermes hazır</span>
         </div>
       </div>
     </div>

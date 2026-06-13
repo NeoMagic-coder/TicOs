@@ -3,12 +3,12 @@
 // AGENT.OS — Main App entry (store-integrated)
 // ============================================================
 import React, { useState, useEffect, useRef } from 'react';
-import { Menubar, Sidebar, ProcessStrip, CmdPalette } from '@/components/AOS/shell';
+import { Menubar, ProcessStrip, CmdPalette } from '@/components/AOS/shell';
 import DashboardPage from '@/pages/DashboardPage';
 import SupervisorPage from '@/pages/ChatPage';
 import GraphPage from '@/pages/GraphPage';
 import OfficePage from '@/pages/AgentsPage';
-import ApprovalsPage from '@/pages/ApprovalsPage';
+import WorkQueuePage from '@/pages/WorkQueuePage';
 import ToolsPage from '@/pages/ToolsPage';
 import AuditPage from '@/pages/AuditPage';
 import BrandPage from '@/pages/BrandPage';
@@ -20,14 +20,17 @@ import BudgetsPage from '@/pages/BudgetsPage';
 import LLMConfigPage from '@/pages/LLMConfigPage';
 import ProductsPage from '@/pages/ProductsPage';
 import AutonomyConsolePage from '@/pages/AutonomyConsolePage';
-import { TasksPage } from '@/pages/legacy/TasksPage';
+import TicProductsPage from '@/pages/TicProductsPage';
+import TicOrdersPage from '@/pages/TicOrdersPage';
+import ShoppingAgentPage from '@/pages/ShoppingAgentPage';
 import { IntegrationsPage } from '@/pages/legacy/IntegrationsPage';
-import Tweaks from '@/components/AOS/tweaks';
 import { ToastStack } from '@/components/AOS/Toast';
 import { SupervisorChatDock } from '@/components/SupervisorChatDock';
 import VoiceDock from '@/components/VoiceDock';
 import { useAdaptedAgents, useStorePage, useOnboardingGate } from '@/lib/aos/adapter';
 import { OnboardingPage as RealOnboardingPage } from '@/pages/OnboardingPage';
+import UnifiedConsolePage from '@/pages/UnifiedConsolePage';
+import { isHubPage } from '@/lib/navigation/hubs';
 import { useStore } from '@/stores/useStore';
 
 const PAGES: Record<string, any> = {
@@ -37,7 +40,7 @@ const PAGES: Record<string, any> = {
   graph:      GraphPage,
   office:     OfficePage,
   agents:     OfficePage,
-  approvals:  ApprovalsPage,
+  approvals:  WorkQueuePage,
   tools:      ToolsPage,
   audit:      AuditPage,
   brand:      BrandPage,
@@ -49,9 +52,13 @@ const PAGES: Record<string, any> = {
   llm_config: LLMConfigPage,
   products:   ProductsPage,
   autonomy_console: AutonomyConsolePage,
-  tasks:      TasksPage,
+  tasks:      WorkQueuePage,
   integrations: IntegrationsPage,
   onboarding: RealOnboardingPage,
+  tic_products: TicProductsPage,
+  tic_orders: TicOrdersPage,
+  shopping: ShoppingAgentPage,
+  console: DashboardPage,
 };
 
 const PLACEHOLDER_LABELS: Record<string, string> = {
@@ -60,7 +67,7 @@ const PLACEHOLDER_LABELS: Record<string, string> = {
   email_flows: 'E-posta Akışları',
   autonomy:    'Otonomi',
   scheduler:   'Zamanlayıcı',
-  tasks:       'Görevler',
+  tasks:       'Görevler & Onaylar',
   knowledge:   'Bilgi Tabanı',
   analytics:   'Analitik',
   integrations:'Entegrasyonlar',
@@ -68,28 +75,9 @@ const PLACEHOLDER_LABELS: Record<string, string> = {
 };
 
 const PlaceholderPage = ({ name }: { name: string }) => (
-  <div className="page">
-    <div className="page__breadcrumb mono">HOME <span>›</span> {name.toUpperCase()}</div>
-    <div className="page__header">
-      <div>
-        <h1 className="page__title">
-          {name}
-          <span className="page__title-tag">YAPIM AŞAMASINDA</span>
-        </h1>
-        <p className="page__sub">Bu ekran çok yakında — şu an dashboard üzerinde çalışıyoruz.</p>
-      </div>
-    </div>
-    <div className="panel">
-      <div className="panel__body">
-        <pre className="term" style={{ margin: 0 }}>
-{`╭─ agent.os ────────────────────────────╮
-│ ${name.padEnd(38)}│
-│ status: scaffold                      │
-│ next: build interactions              │
-╰───────────────────────────────────────╯`}
-        </pre>
-      </div>
-    </div>
+  <div className="page page--placeholder">
+    <h1 className="page__title">{name}</h1>
+    <p className="page__sub">Bu ekran yakında kullanıma açılacak.</p>
   </div>
 );
 
@@ -99,7 +87,6 @@ const App = () => {
   const adaptedAgents = useAdaptedAgents();
   // All store reads MUST happen unconditionally before any early return
   // (Rules of Hooks). The onboarding gate is enforced after these reads.
-  const tasks = useStore((s: any) => s.tasks);
   const auditLogs = useStore((s: any) => s.auditLogs);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [clock, setClock] = useState(() => new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }));
@@ -118,15 +105,39 @@ const App = () => {
   const pingBackend = useStore((s: any) => s.pingBackend);
   const loadTools = useStore((s: any) => s.loadTools);
   const hydrateFromBackend = useStore((s: any) => s.hydrateFromBackend);
+  const refreshAllModules = useStore((s: any) => s.refreshAllModules);
+  const loadAutonomyStatus = useStore((s: any) => s.loadAutonomyStatus);
+  const loadApprovalsFromBackend = useStore((s: any) => s.loadApprovalsFromBackend);
   const fetchIntegrations = useStore((s: any) => s.fetchIntegrations);
   useEffect(() => {
     void pingBackend();
     void loadTools();
     void hydrateFromBackend();
     void fetchIntegrations();
-    const id = setInterval(() => void pingBackend(), 20000);
-    return () => clearInterval(id);
-  }, [pingBackend, loadTools, hydrateFromBackend, fetchIntegrations]);
+    void loadAutonomyStatus().then(() => {
+      const s = useStore.getState();
+      if (s.onboardingComplete && !s.autonomyEnabled) {
+        void s.setAutonomyEnabled(true);
+      }
+    });
+    void refreshAllModules();
+    const pingId = setInterval(() => void pingBackend(), 20000);
+    const approvalsId = setInterval(() => {
+      void loadApprovalsFromBackend();
+    }, 20000);
+    const syncId = setInterval(() => {
+      void refreshAllModules();
+    }, 30000);
+    const autonomyId = setInterval(() => {
+      void loadAutonomyStatus();
+    }, 60000);
+    return () => {
+      clearInterval(pingId);
+      clearInterval(approvalsId);
+      clearInterval(syncId);
+      clearInterval(autonomyId);
+    };
+  }, [pingBackend, loadTools, hydrateFromBackend, refreshAllModules, loadAutonomyStatus, loadApprovalsFromBackend, fetchIntegrations]);
 
   // URL pathname ⇆ currentPage. Single source-of-truth effect to avoid the
   // race where the mirror effect runs with the stale (persisted) route on
@@ -143,7 +154,11 @@ const App = () => {
     'autonomy': 'autonomy_console',
     'autonomy_console': 'autonomy_console',
     'autonomy-console': 'autonomy_console',
-    'tasks': 'tasks', 'integrations': 'integrations', 'onboarding': 'onboarding',
+    'tasks': 'tasks',     'integrations': 'integrations', 'onboarding': 'onboarding',
+    'tic_products': 'tic_products', 'tic-products': 'tic_products',
+    'tic_orders': 'tic_orders', 'tic-orders': 'tic_orders',
+    'shopping': 'shopping', 'alisveris': 'shopping',
+    'console': 'console',
   };
   const PAGE_TO_SLUG: Record<string, string> = { autonomy_console: 'autonomy' };
   const slugForPage = (p: string) => PAGE_TO_SLUG[p] || p;
@@ -188,10 +203,6 @@ const App = () => {
 
   const runningCount = adaptedAgents.filter((a: any) => a.status === 'running').length;
   const busyCount = adaptedAgents.filter((a: any) => a.status === 'busy').length;
-  const lastTaskConfidence = (() => {
-    const withConf = tasks.filter((t: any) => t.confidence != null).slice(-1)[0];
-    return withConf?.confidence?.toFixed(2);
-  })();
   const lastHourCost = (() => {
     const cutoff = Date.now() - 3600 * 1000;
     let cost = 0;
@@ -204,9 +215,9 @@ const App = () => {
     return cost;
   })();
   const budgetBurn = '$' + lastHourCost.toFixed(2) + '/h';
-  const confidence = lastTaskConfidence ?? '—';
 
   const Page = PAGES[route];
+  const useUnifiedShell = Page && isHubPage(route);
 
   return (
     <div className="app-root">
@@ -214,21 +225,23 @@ const App = () => {
         sysClock={clock}
         runningCount={runningCount}
         busyCount={busyCount}
-        budgetBurn={budgetBurn}
-        confidence={confidence}
         onCmd={() => setCmdOpen(true)}
       />
       <div className="app-frame">
-        <Sidebar active={route} onNavigate={setRoute} />
         <main className="main" key={route}>
-          {Page ? <Page navigate={setRoute} /> : <PlaceholderPage name={PLACEHOLDER_LABELS[route] || route} />}
+          {useUnifiedShell ? (
+            <UnifiedConsolePage pageId={route} navigate={setRoute} PageComponent={Page} />
+          ) : Page ? (
+            <Page navigate={setRoute} />
+          ) : (
+            <PlaceholderPage name={PLACEHOLDER_LABELS[route] || route} />
+          )}
         </main>
       </div>
       <ProcessStrip agents={adaptedAgents} budgetBurn={budgetBurn} />
       <CmdPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onNavigate={setRoute} />
       <SupervisorChatDock />
       <VoiceDock />
-      <Tweaks />
       <ToastStack />
     </div>
   );

@@ -3,11 +3,10 @@
 // AGENT.OS — Dashboard page
 // ============================================================
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Icon, StatusDot, Sparkline, AgentAvatar, KpiTile, SectionHead } from '@/components/AOS/widgets';
+import { Icon, Sparkline, AgentAvatar, KpiTile } from '@/components/AOS/widgets';
 import { AGENTS, AGENT_BY_ID } from '@/data/aos/mockData';
 import { useAdaptedDashboard } from '@/lib/aos/adapter';
 import { useStore } from '@/stores/useStore';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { BASE_URL, backendHeaders } from '@/lib/api';
 
 // ============================================================
@@ -17,8 +16,10 @@ const SalesTrend = () => {
   const ref = useRef(null);
   const [hover, setHover] = useState(null);
   const dash = useAdaptedDashboard();
-  const trendData = dash.kpis.salesTrendNums.length
-    ? dash.kpis.salesTrendNums.map((v: number, i: number) => ({ sales: v, day: dash.kpis.salesTrendLabels?.[i] || '' }))
+  const kpiSales = dash?.kpis?.salesTrendNums ?? [];
+  const kpiLabels = dash?.kpis?.salesTrendLabels ?? [];
+  const trendData = kpiSales.length
+    ? kpiSales.map((v: number, i: number) => ({ sales: v, day: kpiLabels[i] || '' }))
     : new Array(7).fill(0).map((_, i) => ({ sales: 0, day: '' }));
 
   useEffect(() => {
@@ -275,6 +276,112 @@ const IntegrationGrid = () => {
 };
 
 // ============================================================
+// Otonom hedef ilerlemesi (Paperclip goals)
+// ============================================================
+const GoalsProgressPanel = () => {
+  const autonomyStatus = useStore((s: any) => s.autonomyStatus);
+  const runGoalLoopTick = useStore((s: any) => s.runGoalLoopTick);
+  const setCurrentPage = useStore((s: any) => s.setCurrentPage);
+  const loadAutonomyStatus = useStore((s: any) => s.loadAutonomyStatus);
+  const [goals, setGoals] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/goals/overview`, {
+        headers: backendHeaders(),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGoals(Array.isArray(data?.goals) ? data.goals : []);
+      }
+    } catch {
+      /* offline */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    void loadAutonomyStatus();
+  }, [refresh, loadAutonomyStatus]);
+
+  const loop = autonomyStatus?.goal_loop;
+  const autonomyOn = autonomyStatus?.mode?.enabled !== false;
+
+  if (loading && !goals.length) {
+    return (
+      <div style={{ padding: 20, fontSize: 12, color: 'var(--fg-3)' }} className="mono">
+        Hedefler yükleniyor…
+      </div>
+    );
+  }
+
+  if (!goals.length) {
+    return (
+      <div style={{ padding: 20, textAlign: 'center', fontSize: 12, color: 'var(--fg-3)' }}>
+        Henüz hedef yok. Ürün onboard edildiğinde varsayılan hedefler otomatik oluşur.
+        <div style={{ marginTop: 10 }}>
+          <button type="button" className="btn btn--sm" onClick={() => setCurrentPage('goals')}>
+            Hedefler sayfasına git
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="dash-goals">
+      <div className="dash-goals__meta mono">
+        <span className={autonomyOn ? 'dash-goals__meta--on' : ''}>
+          {autonomyOn ? 'OTONOM' : 'MANUEL'}
+        </span>
+        <span>{loop?.active_goals ?? goals.length} aktif</span>
+        {(loop?.stale_count ?? 0) > 0 && (
+          <span className="dash-goals__meta--stale">{loop.stale_count} bekleyen</span>
+        )}
+        {loop?.last_tick_at && (
+          <span>Son tick {new Date(loop.last_tick_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
+        )}
+      </div>
+      <div className="dash-goals__list">
+        {goals.map((g) => {
+          const pct = g.progress_pct;
+          const barWidth = pct != null ? `${pct}%` : g.task_count > 0 ? '35%' : '8%';
+          const barLabel = pct != null ? `${pct}%` : g.task_count > 0 ? `${g.task_count} görev` : 'başlamadı';
+          return (
+            <div key={g.id} className={`dash-goals__row ${g.stale ? 'dash-goals__row--stale' : ''}`}>
+              <div className="dash-goals__row-head">
+                <span className="dash-goals__title">{g.title}</span>
+                {g.stale && <span className="dash-goals__stale-tag mono">bekliyor</span>}
+              </div>
+              <div className="dash-goals__bar">
+                <div className="dash-goals__bar-fill" style={{ width: barWidth }} />
+              </div>
+              <div className="dash-goals__row-foot mono">
+                <span>{g.target_metric || '—'}{g.target_value != null ? ` → ${g.target_value}` : ''}</span>
+                <span>{barLabel}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="dash-goals__actions">
+        <button type="button" className="btn btn--sm btn--ghost" onClick={() => setCurrentPage('goals')}>
+          Tüm hedefler
+        </button>
+        <button type="button" className="btn btn--sm" onClick={() => void runGoalLoopTick().then(refresh)}>
+          Hedef döngüsü
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
 // Top-of-page critical alerts (banner row)
 // ============================================================
 const AlertBanner = () => {
@@ -369,30 +476,73 @@ const AlertBanner = () => {
 // ============================================================
 // Daily plan card (next-step intelligence)
 // ============================================================
+const JOB_AGENT_HINT: Record<string, string> = {
+  'ops.hourly_sweep': 'operations_agent',
+  'pricing.daily_review': 'dynamic_pricing_agent',
+  'reviews.daily_sweep': 'review_reputation_agent',
+  'autonomy.morning_brief': 'supervisor',
+  'autonomy.integration_pulse': 'autonomous_decision_agent',
+  'autonomy.approval_sweep': 'autonomous_decision_agent',
+  'autonomy.goal_loop': 'supervisor',
+  'autonomy.boot_pulse': 'autonomous_decision_agent',
+};
+
 const DailyPlan = () => {
-  const quickAsk = useStore((s: any) => s.quickAsk);
-  const items = [
-    { t: '14:30', label: 'pricing.daily_review',      agent: 'pricing_agent',   status: 'queued' },
-    { t: '15:00', label: 'reviews.daily_sweep',       agent: 'review_reputation_agent', status: 'queued' },
-    { t: '15:30', label: 'campaign.refresh',          agent: 'marketing_agent', status: 'queued' },
-    { t: '16:00', label: 'ops.hourly_sweep',          agent: 'operations_agent',status: 'queued' },
-    { t: '18:00', label: 'memory.consolidation',      agent: 'autonomous_decision_agent', status: 'queued' },
-  ];
+  const autonomyStatus = useStore((s: any) => s.autonomyStatus);
+  const runSchedulerJob = useStore((s: any) => s.runSchedulerJob);
+  const schedulerRunning = autonomyStatus?.scheduler?.running === true;
+
+  const items = useMemo(() => {
+    const jobs: any[] = autonomyStatus?.scheduler?.jobs || [];
+    return [...jobs]
+      .sort((a, b) => {
+        const ta = a.next_run_time ? new Date(a.next_run_time).getTime() : Number.MAX_SAFE_INTEGER;
+        const tb = b.next_run_time ? new Date(b.next_run_time).getTime() : Number.MAX_SAFE_INTEGER;
+        return ta - tb;
+      })
+      .slice(0, 8);
+  }, [autonomyStatus]);
+
+  if (!schedulerRunning) {
+    return (
+      <div style={{ padding: 20, fontSize: 12, color: 'var(--fg-3)' }} className="mono">
+        Scheduler kapalı — Otonom modu aç veya backend&apos;i başlat.
+      </div>
+    );
+  }
+
+  if (!items.length) {
+    return (
+      <div style={{ padding: 20, fontSize: 12, color: 'var(--fg-3)' }} className="mono">
+        Zamanlanmış iş yok.
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '4px 0' }}>
-      {items.map(it => {
-        const agent = AGENT_BY_ID[it.agent];
+      {items.map((job) => {
+        const agentId = JOB_AGENT_HINT[job.id] || 'supervisor';
+        const agent = AGENT_BY_ID[agentId];
+        const when = job.next_run_time
+          ? new Date(job.next_run_time).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+          : '—';
+        const last = job.last_run?.summary || job.last_run?.status;
         return (
-          <div key={it.label} className="row" style={{ gridTemplateColumns: '48px 22px 1fr auto' }}>
-            <span className="mono" style={{ color: 'var(--fg-3)', fontSize: 11 }}>{it.t}</span>
+          <div key={job.id} className="row" style={{ gridTemplateColumns: '48px 22px 1fr auto' }}>
+            <span className="mono" style={{ color: 'var(--fg-3)', fontSize: 11 }}>{when}</span>
             <AgentAvatar agent={agent} size={20} />
-            <div>
-              <div style={{ fontSize: 12 }}>{it.label}</div>
-              <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>{agent?.name}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.id}</div>
+              <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>
+                {agent?.name || agentId}
+                {last ? ` · ${String(last).slice(0, 40)}` : ''}
+              </div>
             </div>
             <button
+              type="button"
               className="btn btn--sm btn--ghost"
-              onClick={() => quickAsk(`${it.label} görevini şimdi çalıştır (${it.agent}).`)}
+              onClick={() => void runSchedulerJob(job.id)}
             >
               <Icon name="play" size={10} /> şimdi
             </button>
@@ -404,311 +554,65 @@ const DailyPlan = () => {
 };
 
 // ============================================================
-// ROI Story Banner
-// ============================================================
-const MODE_LABELS = ['Başlangıç (0.saat)', 'Otonom Süreç (3.saat)', 'Sonuç'];
-const MODE_ICONS = ['box', 'activity', 'check'];
-
-const fakeSseEvents = [
-  { event: 'task_started',      agent: 'hermes',          msg: 'Hermes görevi başlattı' },
-  { event: 'plan_ready',        agent: 'hermes',          msg: 'Plan hazır: primary=pricing_agent' },
-  { event: 'agent_started',     agent: 'pricing_agent',   msg: 'Pricing Agent çalışıyor' },
-  { event: 'tool_called',       agent: 'pricing_agent',   msg: '→ margin_calculator' },
-  { event: 'tool_called',       agent: 'pricing_agent',   msg: '→ campaign_discount_simulator' },
-  { event: 'critic_scored',     agent: 'pricing_agent',   msg: 'Skor: 0.92' },
-  { event: 'agent_completed',   agent: 'pricing_agent',   msg: 'Tamamlandı' },
-  { event: 'agent_started',     agent: 'marketing_agent', msg: 'Marketing Agent çalışıyor' },
-  { event: 'tool_called',       agent: 'marketing_agent', msg: '→ ab_test_designer' },
-  { event: 'tool_called',       agent: 'marketing_agent', msg: '→ sentiment_analyzer' },
-  { event: 'critic_scored',     agent: 'marketing_agent', msg: 'Skor: 0.88' },
-  { event: 'agent_completed',   agent: 'marketing_agent', msg: 'Tamamlandı' },
-  { event: 'merging',           agent: 'hermes',          msg: 'Sonuçlar birleştiriliyor' },
-];
-
-// Animated 0 → target counter for the ROI hero stat. ~1.4s ease-out.
-const RoiCounter = ({ target }: { target: number }) => {
-  const [val, setVal] = useState(0);
-  useEffect(() => {
-    const start = performance.now();
-    const dur = 1400;
-    let raf = 0;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / dur);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setVal(target * eased);
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target]);
-  return <>+%{val.toFixed(1)}</>;
-};
-
-const RoiStoryBanner = () => {
-  const [mode, setMode] = useState(-1);
-  const [logs, setLogs] = useState<{ ts: string; event: string; msg: string }[]>([]);
-  const [results, setResults] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const logEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    // Scroll the log's own container only — never the page. scrollIntoView
-    // (even with block:'nearest') still pulls the surrounding flex/grid layout
-    // when the parent is below the fold, which yanks the viewport down.
-    const el = logEndRef.current;
-    if (!el) return;
-    const scroller = el.parentElement;
-    if (scroller) scroller.scrollTop = scroller.scrollHeight;
-  }, [logs]);
-
-  const fetchResults = useCallback(async () => {
-    try {
-      const res = await fetch(`${BASE_URL}/api/v1/demo/results`, { headers: backendHeaders() });
-      if (res.ok) setResults(await res.json());
-    } catch { /* ignore */ }
-  }, []);
-
-  const play = useCallback(async () => {
-    setLoading(true);
-    setLogs([]);
-    setResults(null);
-
-    setMode(0);
-    setLogs(prev => [...prev, { ts: new Date().toLocaleTimeString('tr-TR', { hour12: false }), event: 'mode_change', msg: 'MOD 0 — Başlangıç' }]);
-    await new Promise(r => setTimeout(r, 1200));
-
-    setMode(1);
-    setLogs(prev => [...prev, { ts: new Date().toLocaleTimeString('tr-TR', { hour12: false }), event: 'mode_change', msg: 'MOD 1 — Otonom Süreç başlatılıyor…' }]);
-
-    for (let i = 0; i < fakeSseEvents.length; i++) {
-      const ev = fakeSseEvents[i];
-      // Daha okunabilir tempo — eskiden 280-600ms idi; jüri akışı izleyebilsin.
-      await new Promise(r => setTimeout(r, 750 + Math.random() * 550));
-      setLogs(prev => [...prev, { ts: new Date().toLocaleTimeString('tr-TR', { hour12: false }), event: ev.event, msg: ev.msg }]);
-    }
-
-    setMode(2);
-    setLogs(prev => [...prev, { ts: new Date().toLocaleTimeString('tr-TR', { hour12: false }), event: 'mode_change', msg: 'MOD 2 — Sonuç' }]);
-    await fetchResults();
-    setLoading(false);
-  }, [fetchResults]);
-
-  const reset = useCallback(() => { setMode(-1); setLogs([]); setResults(null); setLoading(false); }, []);
-
-  if (mode === -1) {
-    return (
-      <div className="panel" style={{ marginBottom: 20, textAlign: 'center' }}>
-        <div className="panel__body" style={{ padding: '28px 20px' }}>
-          <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.5 }}>📊</div>
-          <div style={{ fontSize: 14, color: 'var(--fg-1)', marginBottom: 4, fontWeight: 600 }}>ROI Hikayesi</div>
-          <div style={{ fontSize: 12, color: 'var(--fg-3)', marginBottom: 16, maxWidth: 400, margin: '0 auto 16px' }}>
-            AgentOS'un 5 saatlik otonom operasyon hikâyesini adım adım izleyin. Süreç planlaması, ajan koordinasyonu ve nihai sonuçları görün.
-          </div>
-          <button className="btn btn--primary" onClick={play} disabled={loading}>
-            <Icon name="play" size={14} /> ROI Hikayesini Oynat
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="panel" style={{ marginBottom: 20, overflow: 'hidden' }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 16px', borderBottom: '1px solid var(--border-faint)',
-        background: 'var(--bg-2)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {[0, 1, 2].map(i => (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 4,
-              fontSize: 11, fontFamily: 'var(--font-mono)',
-              background: mode === i ? (i === 2 ? 'var(--acid-soft)' : 'var(--bg-3)') : 'transparent',
-              color: mode === i ? (i === 2 ? 'var(--acid)' : 'var(--fg-1)') : 'var(--fg-3)',
-              border: '1px solid', borderColor: mode === i ? (i === 2 ? 'rgba(199,255,61,0.4)' : 'var(--border)') : 'transparent',
-              transition: 'all 0.4s ease',
-            }}>
-              <span style={{ width: 16, height: 16, borderRadius: '50%', background: mode === i ? (i === 2 ? 'var(--acid)' : 'var(--fg-2)') : 'var(--fg-4)', display: 'grid', placeItems: 'center', fontSize: 9, color: '#000', fontWeight: 700 }}>{i}</span>
-              {MODE_LABELS[i]}
-            </div>
-          ))}
-        </div>
-        {mode === 2 && (
-          <button className="btn btn--sm btn--ghost" onClick={reset} style={{ fontSize: 10 }}>
-            <Icon name="refresh" size={10} /> Sıfırla
-          </button>
-        )}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 0 }}>
-        {/* Left: content */}
-        <div style={{ borderRight: '1px solid var(--border-faint)', minHeight: 240 }}>
-          {mode === 0 && (
-            <div style={{ padding: 28, textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: 'var(--fg-3)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>HENÜZ HİÇBİR ŞEY YAPILMADI</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--fg-1)', marginBottom: 4 }}>Boş Ürün · 0 Satış · Marka Yok</div>
-              <div style={{ fontSize: 12, color: 'var(--fg-3)', maxWidth: 360, margin: '12px auto 0' }}>
-                Ürün tanımlanmamış, kanal bağlantısı yok, fiyatlandırma belirlenmemiş. Sistem sıfır durumunda.
-              </div>
-            </div>
-          )}
-
-          {mode === 1 && (
-            <div style={{ padding: '8px 0', maxHeight: 300, overflowY: 'auto' }}>
-              {logs.filter(l => l.event !== 'mode_change').map((l, i) => (
-                <div key={i} style={{
-                  display: 'grid', gridTemplateColumns: '64px 1fr', gap: 8,
-                  padding: '4px 14px', fontSize: 11, fontFamily: 'var(--font-mono)',
-                  borderBottom: '1px solid var(--border-faint)',
-                  opacity: 1 - (i * 0.015),
-                }}>
-                  <span style={{ color: 'var(--fg-3)' }}>{l.ts}</span>
-                  <span>
-                    <span style={{
-                      display: 'inline-block', padding: '0 5px', borderRadius: 2, marginRight: 6,
-                      background: l.event === 'agent_started' ? 'var(--violet-soft)' : l.event === 'tool_called' ? 'var(--cyan-soft)' : l.event === 'critic_scored' ? 'var(--amber-soft)' : l.event === 'agent_completed' ? 'var(--acid-soft)' : 'var(--bg-3)',
-                      color: l.event === 'agent_started' ? 'var(--violet)' : l.event === 'tool_called' ? 'var(--cyan)' : l.event === 'critic_scored' ? 'var(--amber)' : l.event === 'agent_completed' ? 'var(--acid)' : 'var(--fg-2)',
-                      fontSize: 9,
-                    }}>{l.event}</span>
-                    {l.msg}
-                  </span>
-                </div>
-              ))}
-              <div ref={logEndRef} />
-            </div>
-          )}
-
-          {mode === 2 && results && (
-            <div style={{ padding: '14px 16px' }}>
-              {/* Hero stat — jürinin tek bakışta gördüğü rakam */}
-              <div style={{
-                padding: '18px 16px 14px', borderRadius: 8, marginBottom: 12,
-                border: '1px solid rgba(199,255,61,0.35)',
-                background: 'linear-gradient(135deg, rgba(199,255,61,0.10), rgba(199,255,61,0.02))',
-                textAlign: 'center',
-              }}>
-                <div style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', marginBottom: 4 }}>
-                  TAHMİNİ BRÜT KÂR MARJI
-                </div>
-                <div style={{ fontSize: 48, lineHeight: 1, fontWeight: 700, color: 'var(--acid)', fontFamily: 'var(--font-mono)' }}>
-                  <RoiCounter target={results.gross_margin_pct} />
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 8, fontFamily: 'var(--font-mono)' }}>
-                  <span style={{ color: 'var(--fg-1)' }}>{results.autonomous_decisions}</span> otonom karar
-                  {' · '}
-                  <span style={{ color: 'var(--fg-1)' }}>22</span> ajan
-                  {' · '}
-                  Gemini maliyeti <span style={{ color: 'var(--fg-1)' }}>${results.gemini_cost_usd}</span>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-                {[
-                  { label: 'Toplam Otonom Karar', value: results.autonomous_decisions, color: 'var(--acid)', icon: 'sparkles' },
-                  { label: 'İnsana Yükseltilen', value: results.escalated_to_human, color: 'var(--amber)', icon: 'alert' },
-                  { label: 'İşlem Başına Maliyet', value: `$${Number(results.cost_per_op_usd ?? results.gemini_cost_usd ?? 0).toFixed(2)}`, color: 'var(--violet)', icon: 'money' },
-                  { label: 'Zaman Tasarrufu', value: `%${results.time_savings_pct ?? 80}`, color: 'var(--acid)', icon: 'zap' },
-                  { label: 'Gemini Maliyeti', value: `$${results.gemini_cost_usd}`, color: 'var(--violet)', icon: 'money' },
-                  { label: 'İnsan Eşdeğeri', value: `${results.human_equivalent?.people}× ${results.human_equivalent?.duration}`, color: 'var(--cyan)', icon: 'growth' },
-                ].map((card, i) => (
-                  <div key={i} style={{
-                    padding: '10px 12px', borderRadius: 6,
-                    border: '1px solid var(--border-faint)',
-                    background: 'var(--bg-2)',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                      <Icon name={card.icon as any} size={12} color={card.color} />
-                      <span style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>{card.label}</span>
-                    </div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: card.color, fontFamily: 'var(--font-mono)' }}>
-                      {card.value}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right: log / chart */}
-        <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column' }}>
-          {mode < 2 ? (
-            <>
-              <div style={{ fontSize: 10, color: 'var(--fg-3)', marginBottom: 8, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>SSE Event Log</div>
-              <div style={{ flex: 1, overflowY: 'auto', maxHeight: 260 }}>
-                {logs.filter(l => l.event !== 'mode_change').length === 0 && (
-                  <div style={{ fontSize: 11, color: 'var(--fg-4)', textAlign: 'center', paddingTop: 40, fontFamily: 'var(--font-mono)' }}>— olay bekleniyor —</div>
-                )}
-                {logs.filter(l => l.event !== 'mode_change').map((l, i) => (
-                  <div key={i} style={{
-                    fontSize: 10, fontFamily: 'var(--font-mono)', padding: '3px 0',
-                    borderBottom: '1px solid var(--border-faint)', color: 'var(--fg-2)',
-                    opacity: 1 - (i * 0.025),
-                  }}>
-                    <span style={{ color: 'var(--fg-4)', marginRight: 6 }}>{l.ts}</span>
-                    <span style={{
-                      display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
-                      background: l.event === 'agent_completed' ? 'var(--acid)' : l.event === 'tool_called' ? 'var(--cyan)' : 'var(--fg-3)',
-                      marginRight: 4,
-                    }} />
-                    {l.event}
-                  </div>
-                ))}
-                <div ref={logEndRef} />
-              </div>
-            </>
-          ) : results ? (
-            <>
-              <div style={{ fontSize: 10, color: 'var(--fg-3)', marginBottom: 8, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Zaman vs Kâr Marjı</div>
-              <div style={{ flex: 1 }}>
-                <ResponsiveContainer width="100%" height={180}>
-                  <LineChart data={results.profit_margin_timeline}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-faint)" />
-                    <XAxis dataKey="hour" tick={{ fontSize: 10, fill: 'var(--fg-3)' }} tickFormatter={(v: number) => `${v}.s`} stroke="var(--border-faint)" />
-                    <YAxis domain={[0, 20]} tick={{ fontSize: 10, fill: 'var(--fg-3)' }} tickFormatter={(v: number) => `%${v}`} stroke="var(--border-faint)" />
-                    <Tooltip
-                      formatter={(value: number) => [`${value}%`, 'Kâr Marjı']}
-                      labelFormatter={(label: number) => `${label}. saat`}
-                      contentStyle={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 11 }}
-                    />
-                    <Line type="monotone" dataKey="margin" stroke="#C7FF3D" strokeWidth={2} dot={{ r: 3, fill: '#C7FF3D' }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
-                <span>Saat 0 → 5</span>
-                <span style={{ color: 'var(--acid)' }}>+%{results.gross_margin_pct} kâr marjı</span>
-              </div>
-            </>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ============================================================
 // DASHBOARD page
 // ============================================================
-const DashboardPage = () => {
+const DashboardActions = ({
+  dash,
+  kT,
+  loadDemoFixtures,
+  onRefresh,
+  quickAsk,
+  toggleSupervisorDock,
+  compact = false,
+}: any) => (
+  <div className={`page__actions ${compact ? 'page__actions--compact' : ''}`}>
+    {dash.isDemo && kT?.sales?.source !== 'backend' && (
+      <button
+        className="btn btn--ghost btn--sm"
+        onClick={() => {
+          loadDemoFixtures();
+          requestAnimationFrame(() => {
+            window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+            document.querySelector('main')?.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+          });
+        }}
+        title="Sahte rakamlarla dashboard'u doldurur"
+      >
+        <Icon name="sparkles" size={12} /> {compact ? 'Demo' : 'Demo verisi yükle'}
+      </button>
+    )}
+    <button className="btn btn--ghost btn--sm" onClick={onRefresh}>
+      <Icon name="refresh" size={12} /> Yenile
+    </button>
+    {!compact && (
+      <button className="btn btn--sm" onClick={() => quickAsk('Bugün için günün planını çıkar: öncelikli görevler, riskler ve atılması gereken aksiyonlar.')}>
+        <Icon name="flow" size={12} /> Günü Planla
+      </button>
+    )}
+    <button className="btn btn--primary btn--sm" onClick={() => toggleSupervisorDock()}>
+      <Icon name="zap" size={12} /> Komut
+      {!compact && <span className="btn__kbd">⌘K</span>}
+    </button>
+  </div>
+);
+
+const DashboardPage = ({ embedded = false }: { embedded?: boolean; navigate?: (p: string) => void }) => {
   const dash = useAdaptedDashboard();
-  const k = dash.kpis;
-  const kT = dash.kpisT; // Telemetry-wrapped KPIs (source + freshness)
+  const k = dash?.kpis ?? {};
+  const kT = dash.kpisT;
   const quickAsk = useStore((s: any) => s.quickAsk);
+  const refreshDashboard = useStore((s: any) => s.refreshDashboard);
   const loadDemoFixtures = useStore((s: any) => s.loadDemoFixtures);
   const pingBackend = useStore((s: any) => s.pingBackend);
   const loadTools = useStore((s: any) => s.loadTools);
   const toggleSupervisorDock = useStore((s: any) => s.toggleSupervisorDock);
   const onRefresh = async () => {
-    await Promise.all([pingBackend(), loadTools()]);
-    loadDemoFixtures();
+    await Promise.all([pingBackend(), loadTools(), refreshDashboard(), useStore.getState().loadAutonomyStatus(), useStore.getState().loadTasksFromBackend()]);
   };
-  // Trend arrays — real if the store has values, otherwise zero-filled so we
-  // never render the fallback "demo" trend as if it were the user's data.
-  const trend = k.salesTrendNums.length ? k.salesTrendNums : new Array(7).fill(0);
-  const ordersTrend = k.ordersTrendNums.length ? k.ordersTrendNums : new Array(7).fill(0);
-  const roasTrend = k.roasTrendNums.length ? k.roasTrendNums : new Array(7).fill(0);
+  const safeArr = (a: unknown) => (Array.isArray(a) ? a : []);
+  const trend = safeArr(k.salesTrendNums).length ? k.salesTrendNums! : new Array(7).fill(0);
+  const ordersTrend = safeArr(k.ordersTrendNums).length ? k.ordersTrendNums! : new Array(7).fill(0);
+  const roasTrend = safeArr(k.roasTrendNums).length ? k.roasTrendNums! : new Array(7).fill(0);
   const hasSales = trend.some((v: number) => v > 0);
 
   // Compute deltas from the trend instead of pretending to know yesterday.
@@ -735,119 +639,106 @@ const DashboardPage = () => {
   const dashboardLogs = useStore((s: any) => s.auditLogs) || [];
   const hasRecentLogs = dashboardLogs.some((l: any) => l.timestamp && Date.now() - new Date(l.timestamp).getTime() < 60 * 1000);
   return (
-    <div className="page">
-      <div className="page__breadcrumb mono">HOME <span>›</span> DASHBOARD</div>
-      <div className="page__header">
-        <div>
-          <h1 className="page__title">
-            Dashboard
-            <span className="page__title-tag">
-              {dash.isDemo ? 'DEMO' : 'CANLI'} · {new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}
-            </span>
-            {dash.isDemo && (
-              <span
-                className="chip"
-                title="Bu dashboard demo verisiyle dolduruldu. Gerçek rakamlar için backend rollup tablosu beklenir."
-                style={{ background: 'rgba(255,177,61,0.10)', color: 'var(--amber)', border: '1px solid rgba(255,177,61,0.4)' }}
-              >
-                demo verisi
-              </span>
-            )}
-          </h1>
-          <p className="page__sub">
-            Sistem genel durumu — KPI'lar, kanal performansı ve canlı ajan aktivitesi. Veri 30 sn'de bir yenilenir.
-          </p>
+    <div className={`page ${embedded ? 'hub-embedded-page' : ''}`}>
+      {!embedded && (
+        <>
+          <div className="page__breadcrumb mono">HOME <span>›</span> DASHBOARD</div>
+          <div className="page__header">
+            <div>
+              <h1 className="page__title">
+                Dashboard
+                <span className="page__title-tag">
+                  {dash.isDemo ? 'DEMO' : 'CANLI'} · {new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}
+                </span>
+                {dash.isDemo && (
+                  <span
+                    className="chip"
+                    title="Demo verisi yüklü. Yenile ile gerçek sipariş verisine dönebilirsiniz."
+                    style={{ background: 'rgba(255,177,61,0.10)', color: 'var(--amber)', border: '1px solid rgba(255,177,61,0.4)' }}
+                  >
+                    demo verisi
+                  </span>
+                )}
+              </h1>
+              <p className="page__sub">
+                Sistem genel durumu — KPI'lar envanter siparişlerinden türetilir, 30 sn'de bir yenilenir.
+              </p>
+            </div>
+            <DashboardActions
+              dash={dash}
+              kT={kT}
+              loadDemoFixtures={loadDemoFixtures}
+              onRefresh={onRefresh}
+              quickAsk={quickAsk}
+              toggleSupervisorDock={toggleSupervisorDock}
+            />
+          </div>
+        </>
+      )}
+      {embedded && (
+        <div className="page__toolbar">
+          <DashboardActions
+            dash={dash}
+            kT={kT}
+            loadDemoFixtures={loadDemoFixtures}
+            onRefresh={onRefresh}
+            quickAsk={quickAsk}
+            toggleSupervisorDock={toggleSupervisorDock}
+            compact
+          />
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {kT.sales.source !== 'backend' && (
-            <button
-              className="btn btn--ghost"
-              onClick={() => {
-                loadDemoFixtures();
-                requestAnimationFrame(() => {
-                  window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
-                  document.querySelector('main')?.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
-                });
-              }}
-              title="Sahte rakamlarla dashboard'u doldurur — backend'i etkilemez."
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <Icon name="sparkles" size={12} /> Demo verisi yükle
-              <span
-                style={{
-                  fontSize: 9, letterSpacing: '0.08em', fontFamily: 'var(--font-mono)',
-                  padding: '1px 5px', borderRadius: 3,
-                  background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444',
-                  border: '1px solid rgba(239, 68, 68, 0.4)',
-                }}
-              >DEMO</span>
-            </button>
-          )}
-          <button className="btn btn--ghost" onClick={onRefresh}>
-            <Icon name="refresh" size={12} /> Yenile
-          </button>
-          <button className="btn" onClick={() => quickAsk('Bugün için günün planını çıkar: öncelikli görevler, riskler ve atılması gereken aksiyonlar.')}>
-            <Icon name="flow" size={12} /> Günü Planla
-          </button>
-          <button className="btn btn--primary" onClick={() => toggleSupervisorDock()}>
-            <Icon name="zap" size={12} /> Komut Ver
-            <span className="btn__kbd">⌘K</span>
-          </button>
-        </div>
-      </div>
-
-      <RoiStoryBanner />
+      )}
 
       <AlertBanner />
 
-      <div className="grid grid--4" style={{ marginBottom: 20 }}>
+      <div className="grid grid--4">
         <KpiTile
           label="Bugünkü Satış"
           icon="money"
-          value={k.sales}
+          value={k.sales ?? 0}
           delta={fmtDelta(salesDelta)}
           deltaDir={dirOf(salesDelta)}
           sub={hasSales ? `son 7 gün toplam: ₺${total7d.toLocaleString('tr-TR')}` : 'satış verisi yok'}
           trend={trend}
           color="var(--acid)"
-          telemetry={kT.sales}
+          telemetry={kT?.sales}
         />
         <KpiTile
           label="Siparişler"
           icon="bag"
-          value={k.orders}
+          value={k.orders ?? 0}
           delta={fmtDelta(ordersDelta)}
           deltaDir={dirOf(ordersDelta)}
           sub="bugün"
           trend={ordersTrend}
           color="var(--cyan)"
-          telemetry={kT.orders}
+          telemetry={kT?.orders}
         />
         <KpiTile
           label="ROAS"
           icon="activity"
-          value={k.roas}
+          value={k.roas ?? 0}
           delta={fmtDelta(roasDelta)}
           deltaDir={dirOf(roasDelta)}
           sub="hedef 3.5x"
           trend={roasTrend}
           color="var(--violet)"
-          telemetry={kT.roas}
+          telemetry={kT?.roas}
         />
         <KpiTile
           label="Dönüşüm"
           icon="growth"
-          value={k.conversion}
+          value={k.conversion ?? 0}
           delta="—"
           deltaDir="flat"
           sub="kampanya bazlı"
           trend={ordersTrend.map((o: number, i: number) => (trend[i] > 0 ? (o / trend[i]) * 100 : 0))}
           color="var(--amber)"
-          telemetry={kT.conversion}
+          telemetry={kT?.conversion}
         />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16, marginBottom: 20 }}>
+      <div className="hub-layout hub-layout--2-1">
         <div className="panel">
           <div className="panel__head">
             <h3>Satış Trendi</h3>
@@ -869,17 +760,13 @@ const DashboardPage = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16, marginBottom: 20 }}>
+      <div className="hub-layout hub-layout--2-1">
         <div className="panel">
           <div className="panel__head">
-            <h3>Canlı Ajan Aktivitesi</h3>
-            <span className="panel__head-tag">hermes.log</span>
-            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: hasRecentLogs ? 'var(--acid)' : 'var(--fg-3)' }} className="mono">
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: hasRecentLogs ? 'var(--acid)' : 'var(--fg-4)', boxShadow: hasRecentLogs ? '0 0 6px var(--acid)' : 'none' }} />
-              {hasRecentLogs ? 'CANLI' : 'BEKLEMEDE'}
-            </span>
+            <h3>Otonom Hedefler</h3>
+            <span className="panel__head-tag">GOAL LOOP</span>
           </div>
-          <LiveAgentFeed />
+          <GoalsProgressPanel />
         </div>
 
         <div className="panel">
@@ -889,6 +776,18 @@ const DashboardPage = () => {
           </div>
           <DailyPlan />
         </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel__head">
+          <h3>Canlı Ajan Aktivitesi</h3>
+          <span className="panel__head-tag">hermes.log</span>
+          <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: hasRecentLogs ? 'var(--acid)' : 'var(--fg-3)' }} className="mono">
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: hasRecentLogs ? 'var(--acid)' : 'var(--fg-4)', boxShadow: hasRecentLogs ? '0 0 6px var(--acid)' : 'none' }} />
+            {hasRecentLogs ? 'CANLI' : 'BEKLEMEDE'}
+          </span>
+        </div>
+        <LiveAgentFeed />
       </div>
 
       <div className="panel">

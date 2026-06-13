@@ -11,12 +11,10 @@ import { test, expect } from '@playwright/test';
 test.describe('Onboarding smoke', () => {
   test('renders step 1 with product name + category fields', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'OneProduct Agent OS' })).toBeVisible();
-    await expect(page.getByText('Bir ürün. Tüm e-ticaret. Tamamen otonom.')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Ürününüz ne?' })).toBeVisible();
+    await expect(page.getByTestId('ticosclaw-brand')).toContainText('TICOSCLAW');
+    await expect(page.getByRole('heading', { name: 'Define product.' })).toBeVisible();
 
-    // The Devam button is rendered but disabled until required fields are filled.
-    const next = page.getByRole('button', { name: /Devam/i });
+    const next = page.getByRole('button', { name: 'continue' });
     await expect(next).toBeVisible();
     await expect(next).toBeDisabled();
   });
@@ -25,13 +23,14 @@ test.describe('Onboarding smoke', () => {
     await page.goto('/');
 
     await page.getByPlaceholder(/Granit Yanmaz Tencere/i).fill('Yanmaz Tencere');
-    await page.getByPlaceholder(/Ev & Mutfak/i).fill('Mutfak');
+    await page.getByRole('button', { name: 'Ev & Mutfak' }).click();
+    await page.getByRole('button', { name: /PRODUCT Ürünüm var/ }).click();
 
-    const next = page.getByRole('button', { name: /Devam/i });
+    const next = page.getByRole('button', { name: 'continue' });
     await expect(next).toBeEnabled();
     await next.click();
 
-    await expect(page.getByRole('heading', { name: 'Nereden başlamak istiyorsunuz?' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Configure market.' })).toBeVisible();
   });
 
   test('renders without page-level errors on first load', async ({ page }) => {

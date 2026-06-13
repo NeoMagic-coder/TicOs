@@ -34,7 +34,7 @@
       "analytics_agent"
     ],
     "cost_estimate_usd": 0.0,
-    "mode": "mock",
+    "mode": "live",
     "tags": [
       "order"
     ]
@@ -69,7 +69,7 @@
       "analytics_agent"
     ],
     "cost_estimate_usd": 0.0,
-    "mode": "mock",
+    "mode": "live",
     "tags": [
       "stock"
     ]

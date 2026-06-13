@@ -2,7 +2,7 @@
 // ============================================================
 // AGENT.OS — shared widgets
 // ============================================================
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 // ----- Icons (lucide-style stroked SVG, 16x16 by default) -----
 const Icon = ({ name, size = 16, color = 'currentColor', stroke = 1.6, style }) => {

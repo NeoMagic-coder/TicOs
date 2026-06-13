@@ -19,6 +19,7 @@ from apps.api.core.config import get_settings
 from apps.api.core.db.engine import session_scope
 from apps.api.core.db.models import AgentLLMConfigRow
 from apps.api.core.llm.provider import (
+    BedrockProvider,
     GeminiProvider,
     LLMProvider,
     MockProvider,
@@ -62,6 +63,19 @@ def _build(cfg: AgentLLMConfigRow) -> LLMProvider | None:
             key,
             cfg.model or settings.gemini_model,
             fallback_models=settings.gemini_fallback_models,
+            max_concurrency=settings.llm_max_concurrency,
+        )
+
+    if provider == "bedrock":
+        token = api_key or settings.aws_bearer_token_bedrock
+        if not token:
+            log.warning("per_agent.bedrock.no_token", agent=cfg.agent_id)
+            return None
+        return BedrockProvider(
+            bearer_token=token,
+            model=cfg.model or settings.bedrock_model,
+            fallback_models=settings.bedrock_fallback_models,
+            base_url=settings.bedrock_base_url,
             max_concurrency=settings.llm_max_concurrency,
         )
 
@@ -149,7 +163,14 @@ def describe_for_agent(agent_id: str) -> ResolvedProvider:
         cfg = s.query(AgentLLMConfigRow).filter(AgentLLMConfigRow.agent_id == agent_id).one_or_none()
         if cfg is not None and cfg.enabled:
             key_env = cfg.api_key_env or ""
-            api_key_present = bool(os.environ.get(key_env, "")) if key_env else False
+            if key_env == "GEMINI_API_KEY":
+                api_key_present = bool(settings.gemini_api_key)
+            elif key_env == "AWS_BEARER_TOKEN_BEDROCK":
+                api_key_present = bool(settings.aws_bearer_token_bedrock)
+            elif key_env:
+                api_key_present = bool(os.environ.get(key_env, ""))
+            else:
+                api_key_present = False
             return ResolvedProvider(
                 provider_id=cfg.provider,
                 model=cfg.model or "",
@@ -158,6 +179,8 @@ def describe_for_agent(agent_id: str) -> ResolvedProvider:
                 api_key_present=api_key_present,
             )
     # Fall back to global resolution
+    if (settings.llm_provider or "").lower() == "bedrock" or (not settings.llm_provider and settings.aws_bearer_token_bedrock):
+        return ResolvedProvider("bedrock", settings.bedrock_model, settings.bedrock_base_url, "AWS_BEARER_TOKEN_BEDROCK", bool(settings.aws_bearer_token_bedrock))
     if (settings.llm_provider or "").lower() == "gemini" or (not settings.llm_provider and settings.gemini_api_key):
         return ResolvedProvider("gemini", settings.gemini_model, "", "GEMINI_API_KEY", bool(settings.gemini_api_key))
     return ResolvedProvider("mock", "mock", "", "", False)

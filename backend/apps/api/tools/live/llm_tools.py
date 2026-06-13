@@ -25,6 +25,7 @@ import json
 import re
 from typing import Any
 
+from apps.api.core.llm.language import language_directive
 from apps.api.core.llm.provider import LLMMessage, MockProvider, get_llm_provider
 from apps.api.core.logging import get_logger
 from apps.api.core.openclaw.breaker import with_breaker
@@ -70,6 +71,7 @@ async def _ask_llm_json(
     user: str,
     fallback: dict[str, Any],
     max_tokens: int = 700,
+    language: str | None = None,
 ) -> dict[str, Any]:
     """Single LLM round-trip with JSON parsing + mock fallback.
 
@@ -77,6 +79,7 @@ async def _ask_llm_json(
     in-process MockProvider, when the call errors out, or when the response
     can't be parsed as JSON. This keeps the tool contract intact for callers
     that always expect a structured object."""
+    system = system + language_directive(language)
     provider = get_llm_provider()
     # Short-circuit: no real LLM available → return mock immediately. Skipping
     # the network call keeps mock-mode latency predictable.
@@ -121,6 +124,7 @@ async def _brand_name_generator_adapter(payload: dict[str, Any]) -> dict[str, An
     return await _ask_llm_json(
         system=_BRAND_NAME_SYS,
         user=f"Marka vibe: {vibe}",
+        language=payload.get("language"),
         fallback={
             "names": [
                 {"name": "Lumelin", "score": 0.78, "rationale": "Mock — Gemini bağlı değil."},
@@ -174,6 +178,7 @@ async def _target_persona_builder_adapter(payload: dict[str, Any]) -> dict[str, 
     return await _ask_llm_json(
         system=_PERSONA_SYS,
         user=f"Ürün: {product}",
+        language=payload.get("language"),
         fallback={
             "personas": [
                 {"name": "Mock Persona", "age": "30-40", "goal": "—", "objection": "—", "channel": "—"},
@@ -217,6 +222,7 @@ async def _draft_reply_generator_adapter(payload: dict[str, Any]) -> dict[str, A
     return await _ask_llm_json(
         system=_DRAFT_REPLY_SYS,
         user=f"Müşteri mesajı: {text}",
+        language=payload.get("language"),
         fallback={
             "reply": "Mesajınız için teşekkür ederiz, kısa süre içinde dönüş yapacağız. (mock)",
             "tone": "neutral",
@@ -241,6 +247,7 @@ async def _review_response_generator_adapter(payload: dict[str, Any]) -> dict[st
     return await _ask_llm_json(
         system=_REVIEW_RESPONSE_SYS,
         user=f"Yorum: {text}",
+        language=payload.get("language"),
         fallback={
             "response": "Geri bildiriminiz için teşekkür ederiz. (mock)",
             "sentiment": "neu",
@@ -264,6 +271,7 @@ async def _email_sequence_writer_adapter(payload: dict[str, Any]) -> dict[str, A
     return await _ask_llm_json(
         system=_EMAIL_SEQ_SYS,
         user=f"Trigger: {trigger}",
+        language=payload.get("language"),
         fallback={
             "emails": [
                 {"day": "T+0", "subject": "Mock email", "preview": "—", "body": "Mock body."},
@@ -314,6 +322,149 @@ async def _forbidden_word_scanner_adapter(payload: dict[str, Any]) -> dict[str, 
     )
 
 
+# ── competitor_review_analyzer ─────────────────────────────────────────────
+
+_REVIEW_ANALYZER_SYS = (
+    "Sen bir rakip yorum analistisin. Verilen rakip ürün yorumlarını analiz et: "
+    "genel duygu, en sık övülen temalar, en sık şikayet edilen temalar ve bizim "
+    "ürünümüz için fırsatlar (rakibin zayıf olduğu noktalar).\n"
+    "Yanıtı YALNIZCA JSON döndür:\n"
+    '{"overall_sentiment": "pos|neg|neu", "positive_themes": [str, ...], '
+    '"negative_themes": [str, ...], "opportunities": [str, ...], "summary": str}'
+)
+
+
+async def _competitor_review_analyzer_adapter(payload: dict[str, Any]) -> dict[str, Any]:
+    reviews = payload.get("reviews") or []
+    if isinstance(reviews, list):
+        joined = "\n".join(f"- {str(r).strip()[:300]}" for r in reviews[:40])
+    else:
+        joined = str(reviews)[:4000]
+    product = str(payload.get("product", "")).strip()[:200]
+    return await _ask_llm_json(
+        system=_REVIEW_ANALYZER_SYS,
+        user=f"Rakip ürün: {product}\nYorumlar:\n{joined}",
+        language=payload.get("language"),
+        fallback={
+            "overall_sentiment": "neu",
+            "positive_themes": [],
+            "negative_themes": [],
+            "opportunities": [],
+            "summary": "Mock — Gemini bağlı değil, yorum analizi yapılamadı.",
+        },
+        max_tokens=900,
+    )
+
+
+# ── competitor_report_builder ──────────────────────────────────────────────
+
+_COMPETITOR_REPORT_SYS = (
+    "Sen bir rekabet istihbaratı analistisin. Sana ürün adı, rakip fiyat verisi "
+    "(avg/min/max) ve rakip yorum içgörüleri verilecek. Bunları TEK bir rapora "
+    "dönüştür: konumlandırma değerlendirmesi, fiyat önerisi (sayısal aralık ver), "
+    "rakiplerin güçlü/zayıf yönleri ve sıralı aksiyon listesi.\n"
+    "Veri eksikse uydurma — eksikliği summary içinde belirt.\n"
+    "Yanıtı YALNIZCA JSON döndür:\n"
+    '{"positioning": str, "price_recommendation": str, "strengths": [str, ...], '
+    '"weaknesses": [str, ...], "actions": [str, ...], "summary": str}'
+)
+
+
+async def _competitor_report_builder_adapter(payload: dict[str, Any]) -> dict[str, Any]:
+    product = str(payload.get("product", "")).strip()[:200]
+    price_data = payload.get("price_data") or {}
+    review_insights = payload.get("review_insights") or {}
+    competitors = payload.get("competitors") or []
+    user = (
+        f"Ürün: {product}\n"
+        f"Rakipler: {', '.join(str(c)[:60] for c in competitors[:10]) or '—'}\n"
+        f"Fiyat verisi: {json.dumps(price_data, ensure_ascii=False)[:1500]}\n"
+        f"Yorum içgörüleri: {json.dumps(review_insights, ensure_ascii=False)[:1500]}"
+    )
+    return await _ask_llm_json(
+        system=_COMPETITOR_REPORT_SYS,
+        user=user,
+        language=payload.get("language"),
+        fallback={
+            "positioning": "—",
+            "price_recommendation": "—",
+            "strengths": [],
+            "weaknesses": [],
+            "actions": [],
+            "summary": "Mock — Gemini bağlı değil, rakip raporu üretilemedi.",
+        },
+        max_tokens=1200,
+    )
+
+
+# ── social_post_writer ─────────────────────────────────────────────────────
+
+_SOCIAL_POST_SYS = (
+    "Sen bir sosyal medya içerik yazarısın. Verilen ürün ve platform için "
+    "gönderi üret. Platform kuralları: instagram → 1 ana metin (max 2200 kr), "
+    "hashtag listesi ayrı; twitter → max 280 karakter, 1-2 hashtag inline. "
+    "Marka sesine uygun, satışa dönük ama spam hissi vermeyen metin yaz. "
+    "CTA (harekete geçirici çağrı) ekle.\n"
+    "Yanıtı YALNIZCA JSON döndür:\n"
+    '{"platform": "instagram|twitter", "post_text": str, "hashtags": [str, ...], '
+    '"cta": str, "best_time_hint": str}'
+)
+
+
+async def _social_post_writer_adapter(payload: dict[str, Any]) -> dict[str, Any]:
+    product = str(payload.get("product", "")).strip()[:300]
+    platform = str(payload.get("platform", "instagram")).strip().lower()
+    if platform not in ("instagram", "twitter"):
+        platform = "instagram"
+    tone = str(payload.get("tone", "samimi, enerjik")).strip()[:120]
+    campaign = str(payload.get("campaign", "")).strip()[:200]
+    return await _ask_llm_json(
+        system=_SOCIAL_POST_SYS,
+        user=(
+            f"Ürün: {product}\nPlatform: {platform}\nTon: {tone}\n"
+            f"Kampanya bağlamı: {campaign or '—'}"
+        ),
+        language=payload.get("language"),
+        fallback={
+            "platform": platform,
+            "post_text": "Mock — Gemini bağlı değil, gönderi metni üretilemedi.",
+            "hashtags": [],
+            "cta": "—",
+            "best_time_hint": "—",
+        },
+        max_tokens=900,
+    )
+
+
+# ── visual_prompt_generator ────────────────────────────────────────────────
+
+_VISUAL_PROMPT_SYS = (
+    "Sen bir görsel sanat yönetmenisin. Verilen ürün ve gönderi konsepti için "
+    "görüntü üretim modellerine (Gemini Image, Midjourney vb.) verilecek "
+    "İngilizce 'image prompt'lar üret. Her prompt: sahne, ışık, kompozisyon, "
+    "stil ve ürünün konumu net olsun. 3 varyant ver: hero shot, lifestyle, "
+    "flat lay.\n"
+    "Yanıtı YALNIZCA JSON döndür:\n"
+    '{"prompts": [{"variant": "hero|lifestyle|flat_lay", "prompt": str, '
+    '"aspect_ratio": "1:1|4:5|16:9"}, ...], "style_notes": str}'
+)
+
+
+async def _visual_prompt_generator_adapter(payload: dict[str, Any]) -> dict[str, Any]:
+    product = str(payload.get("product", "")).strip()[:300]
+    concept = str(payload.get("concept", "")).strip()[:400]
+    return await _ask_llm_json(
+        system=_VISUAL_PROMPT_SYS,
+        user=f"Ürün: {product}\nGönderi konsepti: {concept or '—'}",
+        language=payload.get("language"),
+        fallback={
+            "prompts": [],
+            "style_notes": "Mock — Gemini bağlı değil, görsel prompt üretilemedi.",
+        },
+        max_tokens=900,
+    )
+
+
 # ── registry ───────────────────────────────────────────────────────────────
 
 _REGISTRATIONS = [
@@ -326,6 +477,10 @@ _REGISTRATIONS = [
     ("email_sequence_writer", _email_sequence_writer_adapter),
     ("listing_compliance_check", _listing_compliance_check_adapter),
     ("forbidden_word_scanner", _forbidden_word_scanner_adapter),
+    ("competitor_review_analyzer", _competitor_review_analyzer_adapter),
+    ("competitor_report_builder", _competitor_report_builder_adapter),
+    ("social_post_writer", _social_post_writer_adapter),
+    ("visual_prompt_generator", _visual_prompt_generator_adapter),
 ]
 
 

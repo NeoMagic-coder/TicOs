@@ -1,6 +1,6 @@
 // @ts-nocheck
 // ============================================================
-// AGENT.OS — Live Task Graph (Hermes DAG visualization)
+// TicOSClaw — Live Task Graph
 // Centerpiece: a real-time view of a multi-agent execution plan.
 // ============================================================
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -117,6 +117,12 @@ const GraphNode = ({ node, selected, onClick, runningProgress }) => {
           overflow: 'hidden', display: '-webkit-box',
           WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
         }}>{node.label}</div>
+        {node.injected && (
+          <span style={{
+            marginTop: 4, fontSize: 9, fontFamily: 'var(--font-mono)',
+            color: 'var(--violet)', letterSpacing: '0.06em',
+          }}>HANDOFF</span>
+        )}
         {status === 'running' && (
           <div style={{
             position: 'absolute', left: 0, right: 0, bottom: -1,
@@ -190,7 +196,13 @@ const FlowEdges = ({ graph, runningSet, doneSet }) => {
 // ============================================================
 // Main Page
 // ============================================================
-const GraphPage = () => {
+const GraphPage = ({
+  navigate,
+  embedded = false,
+}: {
+  navigate?: (page: string) => void;
+  embedded?: boolean;
+}) => {
   const liveGraph = useAdaptedTaskGraph();
   const chatProgress = useStore((s: any) => s.chatProgress) || [];
   const isLive = !!liveGraph;
@@ -258,54 +270,95 @@ const GraphPage = () => {
     setSelected(null);
   };
 
+  const setCurrentPage = useStore((s: any) => s.setCurrentPage);
+  const goSupervisor = () => {
+    if (navigate) navigate('supervisor');
+    else setCurrentPage('supervisor');
+  };
+  const goDashboard = () => {
+    if (navigate) navigate('dashboard');
+    else setCurrentPage('dashboard');
+  };
+  const goGoals = () => {
+    if (navigate) navigate('goals');
+    else setCurrentPage('goals');
+  };
+  const goTasks = () => {
+    if (navigate) navigate('tasks');
+    else setCurrentPage('tasks');
+  };
+  const tasks = useStore((s: any) => s.tasks);
+  const goalTasks = useMemo(
+    () => [...tasks]
+      .filter((t: any) => t.goal_id)
+      .sort((a: any, b: any) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
+      .slice(0, 5),
+    [tasks],
+  );
+
   return (
-    <div className="page">
-      <div className="page__breadcrumb mono">HOME <span>›</span> GÖREV GRAFİĞİ <span>›</span> {graph.task_id}</div>
+    <div className={`page graph-page ${embedded ? 'graph-page--embedded' : ''}`}>
+      {!embedded && (
+        <div className="page__breadcrumb mono">HOME <span>›</span> GÖREV GRAFİĞİ <span>›</span> {graph.task_id}</div>
+      )}
       <div className="page__header">
         <div>
-          <h1 className="page__title">
-            Görev Grafiği
-            <span className="page__title-tag">HERMES · DAG</span>
-            {isLive && runningSet.size > 0 && (
-              <span className="chip chip--amber" style={{ background: 'transparent' }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--amber)' }} />
-                ÇALIŞIYOR
-              </span>
-            )}
-            {isLive && runningSet.size === 0 && doneSet.size === graph.nodes.length && (
-              <span className="chip chip--acid" style={{ background: 'transparent' }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--acid)' }} />
-                TAMAMLANDI
-              </span>
-            )}
-            {!isLive && (
-              <span className="chip" style={{ background: 'transparent', color: 'var(--fg-3)' }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--fg-4)' }} />
-                BEKLEMEDE
-              </span>
-            )}
-          </h1>
-          <p className="page__sub">
-            <span className="mono">{graph.task_id}</span> · {graph.task}
-          </p>
+          {!embedded && (
+            <>
+              <h1 className="page__title">
+                Görev Grafiği
+                <span className="page__title-tag">HERMES · DAG</span>
+                {isLive && runningSet.size > 0 && (
+                  <span className="chip chip--amber" style={{ background: 'transparent' }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--amber)' }} />
+                    ÇALIŞIYOR
+                  </span>
+                )}
+                {isLive && runningSet.size === 0 && doneSet.size === graph.nodes.length && graph.nodes.length > 0 && (
+                  <span className="chip chip--acid" style={{ background: 'transparent' }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--acid)' }} />
+                    TAMAMLANDI
+                  </span>
+                )}
+                {!isLive && (
+                  <span className="chip" style={{ background: 'transparent', color: 'var(--fg-3)' }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--fg-4)' }} />
+                    BEKLEMEDE
+                  </span>
+                )}
+              </h1>
+              <p className="page__sub">
+                <span className="mono">{graph.task_id}</span> · {graph.task}
+              </p>
+            </>
+          )}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn--ghost" onClick={reset} disabled={!isLive}>
+        <div className="page-toolbar">
+          {embedded && isLive && runningSet.size > 0 && (
+            <span className="tab__pill tab__pill--live mono">LIVE · {runningSet.size}</span>
+          )}
+          <button type="button" className="btn btn--ghost btn--sm" onClick={goGoals}>
+            <Icon name="graph" size={12} /> Hedefler
+          </button>
+          <button type="button" className="btn btn--ghost btn--sm" onClick={goTasks}>
+            <Icon name="approvals" size={12} /> Görevler
+          </button>
+          <button type="button" className="btn btn--ghost btn--sm" onClick={goSupervisor}>
+            <Icon name="chat" size={12} /> Supervisor
+          </button>
+          <button type="button" className="btn btn--ghost btn--sm" onClick={goDashboard}>
+            <Icon name="dashboard" size={12} /> Dashboard
+          </button>
+          <button type="button" className="btn btn--ghost btn--sm" onClick={reset} disabled={!isLive}>
             <Icon name="refresh" size={12} /> Sıfırla
           </button>
-          <button className="btn btn--primary" onClick={() => setShowNewDag(true)}>
+          <button type="button" className="btn btn--primary btn--sm" onClick={() => setShowNewDag(true)}>
             <Icon name="zap" size={12} /> Yeni DAG
           </button>
         </div>
       </div>
 
-      {/* Stats strip */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)',
-        gap: 1, background: 'var(--border-faint)',
-        border: '1px solid var(--border)', borderRadius: 6,
-        marginBottom: 16, overflow: 'hidden',
-      }}>
+      <div className="graph-page__stats">
         {[
           { label: 'İlerleme',  val: graph.nodes.length ? `${completionPct}%` : '—', sub: `${doneSet.size}/${graph.nodes.length} düğüm` },
           { label: 'Çalışıyor', val: runningSet.size,                                sub: 'paralel' },
@@ -313,17 +366,62 @@ const GraphPage = () => {
           { label: 'Süre',      val: totalMs ? `${(totalMs/1000).toFixed(1)}s` : '—', sub: 'cumulative' },
           { label: 'Maliyet',   val: totalCostUsd > 0 ? `$${totalCostUsd.toFixed(3)}` : '$0', sub: `${totalToolCalls} tool çağrısı` },
         ].map((s) => (
-          <div key={s.label} style={{ padding: '12px 16px', background: 'var(--bg-1)' }}>
+          <div key={s.label} className="graph-page__stat">
             <div className="label-eyebrow" style={{ marginBottom: 4 }}>{s.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 500, letterSpacing: '-0.02em' }} className="tnum">{s.val}</div>
+            <div className="graph-page__stat-val tnum">{s.val}</div>
             <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)', marginTop: 2 }}>{s.sub}</div>
           </div>
         ))}
       </div>
 
-      {/* Main grid: graph canvas + inspector */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16 }}>
-        <div className="panel">
+      {goalTasks.length > 0 && (
+        <div className="panel graph-page__goal-strip" style={{ marginBottom: 12 }}>
+          <div className="panel__head">
+            <h3>Hedef Bağlı Görevler</h3>
+            <span className="panel__head-tag">{goalTasks.length} son</span>
+            <button type="button" className="btn btn--sm btn--ghost" style={{ marginLeft: 'auto' }} onClick={goGoals}>
+              Tüm hedefler
+            </button>
+          </div>
+          <div className="panel__body" style={{ display: 'grid', gap: 8 }}>
+            {goalTasks.map((t: any) => (
+              <button
+                key={t.task_id}
+                type="button"
+                className="graph-page__goal-row"
+                onClick={goTasks}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  padding: '8px 10px',
+                  background: 'var(--bg-0)',
+                  border: '1px solid var(--border-faint)',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  color: 'inherit',
+                  font: 'inherit',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {t.title}
+                  </div>
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)', marginTop: 2 }}>
+                    {t.goal_id} · {t.status}
+                  </div>
+                </div>
+                <span className="mono" style={{ fontSize: 10, color: 'var(--violet)' }}>{t.task_id}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="graph-page__main">
+        <div className="panel graph-page__canvas-wrap">
           <div className="panel__head">
             <h3>Yürütme Grafiği</h3>
             <span className="panel__head-tag">{isLive ? `BAŞLATILDI ${graph.startedAt}` : 'BEKLEMEDE'}</span>
@@ -386,13 +484,13 @@ const GraphPage = () => {
               Bir görev başlatıldığında düğümler burada görünecek. Bir düğüme tıklayarak detayını görebilirsin.
             </div>
           )}
-          {selectedNode && selectedAgent && (
+          {selectedNode && (
             <div style={{ padding: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                <AgentAvatar agent={selectedAgent} size={36} />
+                <AgentAvatar agent={selectedAgent || { name: selectedNode.agent, glyph: '??', accent: 'var(--violet)' }} size={36} />
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>{selectedAgent.name}</div>
-                  <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>{selectedAgent.role}</div>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>{selectedAgent?.name || selectedNode.agent}</div>
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>{selectedAgent?.role || 'Ajan'}</div>
                 </div>
                 <span className={`chip chip--${
                   selectedNode.status === 'done' ? 'acid' :
@@ -401,13 +499,42 @@ const GraphPage = () => {
                 }`}>{selectedNode.status}</span>
               </div>
 
+              {selectedNode.injected && (
+                <div style={{
+                  marginBottom: 12, padding: '10px 12px',
+                  background: 'rgba(168,85,247,0.08)',
+                  border: '1px solid rgba(168,85,247,0.35)',
+                  borderRadius: 6,
+                }}>
+                  <div className="label-eyebrow" style={{ color: 'var(--violet)', marginBottom: 6 }}>A2A Handoff</div>
+                  <div style={{ fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.5 }}>
+                    {selectedNode.handoffFrom && (
+                      <div>
+                        Kaynak ajan:{' '}
+                        <span className="mono" style={{ color: 'var(--violet)' }}>
+                          {AGENT_BY_ID[selectedNode.handoffFrom]?.name || selectedNode.handoffFrom}
+                        </span>
+                      </div>
+                    )}
+                    {selectedNode.handoffFromNode && (
+                      <div className="mono" style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 4 }}>
+                        Parent düğüm: {selectedNode.handoffFromNode}
+                      </div>
+                    )}
+                    <div className="mono" style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 4 }}>
+                      Bağımlılık: {graph.edges.filter(([_, d]) => d === selectedNode.id).map(([s]) => s).join(', ') || '—'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div style={{ fontSize: 12, color: 'var(--fg-2)', marginBottom: 12, lineHeight: 1.45 }}>
                 {selectedNode.label}
               </div>
 
               <div className="label-eyebrow" style={{ marginBottom: 6 }}>Tool Çağrıları</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
-                {selectedNode.tools.length ? selectedNode.tools.map(t => (
+                {selectedNode.tools?.length ? selectedNode.tools.map(t => (
                   <div key={t} className="mono" style={{
                     fontSize: 11, padding: '5px 8px',
                     background: 'var(--bg-inset)', border: '1px solid var(--border-faint)',
@@ -454,8 +581,11 @@ const GraphPage = () => {
               )}
               {selectedNode.status === 'running' && (() => {
                 const events = chatProgress
-                  .filter((p: any) => p.agent_id === selectedNode.agent)
-                  .slice(-6);
+                  .filter((p: any) =>
+                    p.node_id === selectedNode.id
+                    || (!p.node_id && p.agent_id === selectedNode.agent),
+                  )
+                  .slice(-8);
                 return (
                   <>
                     <div className="label-eyebrow" style={{ marginBottom: 6 }}>Canlı Akış</div>
@@ -470,10 +600,13 @@ const GraphPage = () => {
                         <div style={{ color: 'var(--fg-3)' }}>… SSE event bekleniyor</div>
                       ) : (
                         events.map((e: any, i: number) => (
-                          <div key={i} style={{ display: 'flex', gap: 6 }}>
+                          <div key={i} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                             <span style={{ color: 'var(--fg-4)' }}>{new Date(e.ts).toLocaleTimeString('tr-TR', { hour12: false })}</span>
                             <span style={{ color: 'var(--fg-3)' }}>{e.event}</span>
                             {e.tool_id && <span style={{ color: 'var(--cyan)' }}>· {e.tool_id}()</span>}
+                            {e.event === 'node_injected' && e.from_agent && (
+                              <span style={{ color: 'var(--violet)' }}>← {e.from_agent}</span>
+                            )}
                           </div>
                         ))
                       )}
@@ -558,7 +691,7 @@ const GraphPage = () => {
           <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 8, padding: 24, width: 520, maxWidth: '92vw' }}>
             <h3 style={{ marginTop: 0, fontSize: 15 }}>Yeni DAG</h3>
             <div className="mono" style={{ fontSize: 11, color: 'var(--fg-3)', marginBottom: 10 }}>
-              Hermes orkestratörü prompt'u plana çevirip yeni bir görev grafiği başlatacak.
+              TicOSClaw prompt'u plana çevirip yeni bir görev grafiği başlatacak.
             </div>
             <textarea
               rows={4}

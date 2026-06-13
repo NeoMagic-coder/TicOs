@@ -1,6 +1,6 @@
 // @ts-nocheck
 // ============================================================
-// AGENT.OS — Tools registry (OpenClaw)
+// TicOSClaw — Tools registry
 // ============================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon, AgentAvatar } from '@/components/AOS/widgets';
@@ -176,7 +176,7 @@ const ToolDetail = ({ tool }) => {
               const agentId: string =
                 (Array.isArray((tool as any).allowed_agents) && (tool as any).allowed_agents[0])
                 || 'supervisor';
-              const res = await fetch(`${BASE_URL}/api/v1/tools/execute`, {
+              const res = await fetch(`${BASE_URL}/api/v1/ticosclaw/tools/execute`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tool_id: tool.id, agent_id: agentId, input: {}, dry_run: true }),
@@ -234,7 +234,7 @@ const ToolsPage = () => {
       const items = Array.isArray(parsed) ? parsed : [parsed];
       // Best-effort: POST to backend (endpoint may not exist).
       try {
-        await fetch(`${BASE_URL}/api/v1/tools`, {
+        await fetch(`${BASE_URL}/api/v1/ticosclaw/tools`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(items),
@@ -286,7 +286,7 @@ const ToolsPage = () => {
       <div className="page__header">
         <div>
           <h1 className="page__title">
-            OpenClaw Registry
+            TicOSClaw Araç Kayıt Defteri
             <span className="page__title-tag">{TOOLS.length} TOOL</span>
           </h1>
           <p className="page__sub">
@@ -423,7 +423,7 @@ const ToolsPage = () => {
               <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-3)' }} className="mono">
                 — manifest yüklenmedi —
                 <div style={{ marginTop: 10, fontSize: 11 }}>
-                  Backend `/api/v1/tools` boş döndü ya da erişilemiyor.
+                  TicOSClaw `/api/v1/ticosclaw/tools` boş döndü ya da erişilemiyor.
                 </div>
                 <button className="btn btn--sm" style={{ marginTop: 12 }} onClick={rescan} disabled={scanning}>
                   <Icon name="refresh" size={10} /> {scanning ? 'Taranıyor…' : 'Yeniden Tara'}

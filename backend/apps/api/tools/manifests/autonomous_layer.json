@@ -582,5 +582,88 @@
       "decision",
       "audit"
     ]
+  },
+  {
+    "tool_id": "agent_handoff",
+    "name": "Ajan Devir",
+    "description": "Başka ajana standart A2A mesaj zarfı ile iş devret. delegate_subtask intent'i aktif Hermes DAG'ına dinamik node ekler.",
+    "category": "coordination",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "to_agent": {
+          "type": "string",
+          "description": "Hedef ajan ID (ör. logistics_agent)"
+        },
+        "intent": {
+          "type": "string",
+          "enum": [
+            "request_data",
+            "notify_event",
+            "delegate_subtask",
+            "negotiate_offer"
+          ],
+          "description": "Mesaj niyeti; alt görev devri için delegate_subtask"
+        },
+        "payload": {
+          "type": "object",
+          "description": "Mesaj gövdesi. delegate_subtask için message/title önerilir."
+        },
+        "correlation_id": {
+          "type": "string",
+          "description": "Görev zinciri ID — genelde task_id (executor otomatik doldurur)"
+        },
+        "goal_id": {
+          "type": "integer",
+          "description": "Opsiyonel Paperclip hedef ID"
+        },
+        "hop": {
+          "type": "integer",
+          "description": "Relay sayacı — döngü koruması"
+        }
+      },
+      "required": [
+        "intent"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "message_id": {
+          "type": "string"
+        },
+        "correlation_id": {
+          "type": "string"
+        },
+        "delivered_to": {
+          "type": "integer"
+        },
+        "hop": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "allowed_agents": [
+      "negotiation_agent",
+      "logistics_agent",
+      "dynamic_pricing_agent",
+      "autonomous_decision_agent",
+      "operations_agent",
+      "supervisor"
+    ],
+    "cost_estimate_usd": 0.0,
+    "mode": "live",
+    "tags": [
+      "coordination",
+      "a2a",
+      "handoff"
+    ]
   }
 ]

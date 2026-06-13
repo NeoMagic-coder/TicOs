@@ -9,7 +9,7 @@ OneProduct Agent OS — a multi-agent e-commerce platform built around a single 
 - **Hermes** (`apps/api/core/hermes/`) — orchestrator. Parses a user request, builds a `TaskGraph`, runs ready nodes in parallel via `asyncio.gather`, merges results with an LLM-generated executive summary in Turkish.
 - **OpenClaw** (`apps/api/core/openclaw/`) — tool-use layer. Self-describing JSON manifest registry, permission-scoped execution, JSON-schema input validation, retry, fallback, audit log, and per-context cost/budget tracking.
 
-The frontend is a Vite + React 19 SPA that talks to the FastAPI backend; it can also run standalone (Gemini called directly from the browser). The user-facing language is **Turkish** — agent system prompts, summaries, and most UI strings are in Turkish. Preserve this when editing.
+The frontend is a Vite + React 19 SPA that talks to the FastAPI backend. All LLM traffic goes through the backend — including the offline-fallback path, which uses the `POST /api/v1/llm/generate` proxy instead of calling Gemini from the browser. The user-facing language is **Turkish** — agent system prompts, summaries, and most UI strings are in Turkish. Preserve this when editing.
 
 ## Commands
 
@@ -49,11 +49,9 @@ Note: `vite.config.ts` uses `vite-plugin-singlefile`, so `npm run build` inlines
 
 ## Environment
 
-`.env.local` (gitignored). Without keys the frontend warns and the backend falls back to `MockProvider` — flows still work end-to-end.
+`.env.local` (gitignored). Without keys the backend falls back to `MockProvider` — flows still work end-to-end. The frontend needs no LLM key: all completions (including fallbacks) go through the backend `/api/v1/llm/generate` proxy. `VITE_GEMINI_MODEL` survives only as a UI display hint.
 
 ```
-VITE_GEMINI_API_KEY=AIza...
-VITE_GEMINI_MODEL=gemini-2.5-flash-lite
 GEMINI_API_KEY=AIza...
 GEMINI_MODEL=gemini-2.5-flash-lite
 ```
@@ -325,7 +323,7 @@ Postgres should still use real migrations.
 ### Frontend
 
 - `src/stores/useStore.ts` is the single Zustand store. Pages in `src/pages/` are thin views over it. Layout/sidebar in `src/components/`. Path alias `@` → `src/`.
-- The frontend currently calls Gemini directly from the browser (see README security note). Treat it as a clickable prototype; production flows must go through `apps/api`.
+- The frontend no longer calls Gemini directly: `src/lib/gemini.ts` is a thin client for the backend `POST /api/v1/llm/generate` proxy, so no API key ships in the bundle. Browser-side fallback paths are additionally gated by `import.meta.env.DEV || VITE_ENABLE_BROWSER_LLM_FALLBACK`.
 - `chatWithFallback` (`src/lib/api.ts`) — if the backend returns 5xx/timeout it calls Gemini directly, writing `fallback_used: true` into the audit log.
 - `sendUserMessageStream` in the store drives the SSE path; falls back to the buffered `sendUserMessage` if the stream errors mid-flight.
 - `detectIntent` in the store does Turkish substring matching for supervisor commands (navigation, bulk approvals, brand/pricing regeneration, etc.) and short-circuits the backend call when a match is found.

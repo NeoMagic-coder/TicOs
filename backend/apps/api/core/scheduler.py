@@ -14,13 +14,18 @@ converted to cron expressions by the LLM provider when a job is created.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import select
+
+from apps.api.core.autonomy.runtime import autonomy_enabled
+from apps.api.core.autonomy.sweeps import run_autonomy_pulse
+from apps.api.core.autonomy.goal_loop import run_goal_loop_tick
 
 from apps.api.core.db.engine import session_scope
 from apps.api.core.db.models import ScheduledJobRow
@@ -75,6 +80,61 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "agent_hint": "review_reputation_agent",
         },
     },
+    {
+        "id": "autonomy.integration_pulse",
+        "trigger": IntervalTrigger(minutes=15),
+        "kwargs": {
+            "job_id": "autonomy.integration_pulse",
+            "prompt": "",
+            "agent_hint": None,
+            "sweep": "pulse",
+        },
+        "next_run_time": None,
+    },
+    {
+        "id": "autonomy.morning_brief",
+        "trigger": CronTrigger(hour=8, minute=30),
+        "kwargs": {
+            "job_id": "autonomy.morning_brief",
+            "prompt": (
+                "Supervisor: aktif ürün için bugünün operasyon planını çıkar — "
+                "stok, fiyat, kampanya ve onay önceliklerini sırala."
+            ),
+            "agent_hint": "supervisor",
+        },
+    },
+    {
+        "id": "autonomy.approval_sweep",
+        "trigger": IntervalTrigger(minutes=30),
+        "kwargs": {
+            "job_id": "autonomy.approval_sweep",
+            "prompt": "",
+            "agent_hint": None,
+            "sweep": "approvals",
+        },
+        "next_run_time": None,
+    },
+    {
+        "id": "autonomy.boot_pulse",
+        "trigger": DateTrigger(run_date=datetime.now(UTC) + timedelta(minutes=2)),
+        "kwargs": {
+            "job_id": "autonomy.boot_pulse",
+            "prompt": "",
+            "agent_hint": None,
+            "sweep": "pulse",
+        },
+    },
+    {
+        "id": "autonomy.goal_loop",
+        "trigger": IntervalTrigger(hours=2),
+        "kwargs": {
+            "job_id": "autonomy.goal_loop",
+            "prompt": "",
+            "agent_hint": None,
+            "sweep": "goal_loop",
+        },
+        "next_run_time": None,
+    },
 ]
 
 
@@ -82,8 +142,49 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
 # Job runner
 # ──────────────────────────────────────────────
 
-async def _run_agent_job(job_id: str, prompt: str, agent_hint: str | None) -> None:
-    """Execute a single scheduled prompt through Hermes."""
+async def _run_agent_job(
+    job_id: str,
+    prompt: str,
+    agent_hint: str | None,
+    sweep: str | None = None,
+) -> None:
+    """Execute a scheduled prompt through Hermes, or a deterministic sweep."""
+    if not autonomy_enabled():
+        log.info("scheduler.job.skipped", job_id=job_id, reason="autonomy_disabled")
+        return
+
+    if sweep == "pulse":
+        await run_autonomy_pulse()
+        _last_runs[job_id] = {
+            "started_at": datetime.now(UTC).isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
+            "status": "ok",
+            "summary": "autonomy pulse (sync + approvals)",
+        }
+        return
+    if sweep == "approvals":
+        from apps.api.core.autonomy.sweeps import sweep_low_risk_approvals
+
+        result = sweep_low_risk_approvals()
+        _last_runs[job_id] = {
+            "started_at": datetime.now(UTC).isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
+            "status": "ok",
+            "summary": f"approved {result.get('approved_count', 0)} low-risk",
+        }
+        return
+    if sweep == "goal_loop":
+        assert _orchestrator is not None
+        started_gl = datetime.now(UTC)
+        result = await run_goal_loop_tick(_orchestrator, max_goals=1)
+        _last_runs[job_id] = {
+            "started_at": started_gl.isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
+            "status": "ok",
+            "summary": f"goal loop dispatched {result.get('dispatched', 0)}",
+        }
+        return
+
     started = datetime.now(UTC)
     log.info("scheduler.job.start", job_id=job_id, agent=agent_hint)
     assert _orchestrator is not None
@@ -194,7 +295,7 @@ def _register_user_job(row: ScheduledJobRow) -> None:
             _run_agent_job,
             trigger,
             id=row.id,
-            kwargs={"job_id": row.id, "prompt": row.prompt, "agent_hint": row.agent_hint},
+            kwargs={"job_id": row.id, "prompt": row.prompt, "agent_hint": row.agent_hint, "sweep": None},
             replace_existing=True,
         )
         log.info("scheduler.user_job.registered", job_id=row.id, cron=row.schedule_expr)

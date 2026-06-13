@@ -286,7 +286,7 @@ function BackendStatusBadge({
       }`}
       title={
         fallbackActive
-          ? 'Backend çevrimdışı — Gemini fallback aktif. Sonuçlar tarayıcıdan üretiliyor.'
+          ? 'Backend çevrimdışı — LLM proxy fallback aktif. Sonuçlar backend üzerinden üretiliyor.'
           : 'Backend çevrimdışı — tüm AI çağrıları başarısız olacak.'
       }
     >

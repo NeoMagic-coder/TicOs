@@ -8,14 +8,13 @@ Ağa gitmez — StubLLM ve kayıtlı mock Trendyol adaptörleri kullanır.
 from __future__ import annotations
 
 import json
-import warnings
 
 import pytest
 
 from apps.api.agents.registry import AgentRegistry
 from apps.api.agents.seed import SEED_AGENTS
 from apps.api.core.hermes.orchestrator import HermesOrchestrator
-from apps.api.core.hermes.router import route as _keyword_route
+from apps.api.tests._keyword_route import keyword_route as _keyword_route
 from apps.api.core.llm.provider import LLMResponse, LLMProvider
 from apps.api.core.openclaw.executor import (
     ExecutionContext,
@@ -47,9 +46,7 @@ class StubLLM(LLMProvider):
             if marker in user_msg:
                 user_msg = user_msg.split(marker, 1)[1].split("KULLANILABİLİR")[0].strip()
             available = [s.agent_id for s in SEED_AGENTS if s.active]
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", DeprecationWarning)
-                decision = _keyword_route(user_msg, available)
+            decision = _keyword_route(user_msg, available)
             nodes = [{
                 "id": "n1",
                 "agent_id": decision.primary_agent,

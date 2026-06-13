@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>OneProduct Agent OS</title>
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <span class="logo">◆</span>
+        <span class="title">OneProduct <b>Agent OS</b></span>
+      </div>
+      <div class="status" id="status" title="Backend durumu">
+        <span class="dot" id="status-dot"></span>
+        <span id="status-text">bağlanıyor…</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="product-card hidden" id="product-card">
+        <div class="product-meta">
+          <div class="product-name" id="product-name">—</div>
+          <div class="product-sub">
+            <span class="badge" id="product-source">—</span>
+            <span class="product-price" id="product-price"></span>
+          </div>
+        </div>
+        <div class="quick-actions">
+          <button class="chip" data-prompt="Bu ürün için rakip fiyat taraması yap ve uygun bir fiyat öner.">
+            💰 Fiyat analizi
+          </button>
+          <button class="chip" data-prompt="Bu ürünün rakiplerini farklı pazaryerlerinde tara ve karşılaştır.">
+            🔍 Rakip taraması
+          </button>
+          <button class="chip" data-prompt="Bu ürün için ikna edici, SEO uyumlu bir Türkçe ürün açıklaması yaz.">
+            ✍️ Açıklama yaz
+          </button>
+        </div>
+      </section>
+
+      <section class="composer">
+        <textarea
+          id="message"
+          rows="2"
+          placeholder="Hermes'e sor… (örn. 'kâr marjımı nasıl artırırım?')"
+        ></textarea>
+        <button id="send" class="send-btn">Gönder</button>
+      </section>
+
+      <section class="result hidden" id="result">
+        <div class="result-head">
+          <span class="badge confidence" id="confidence"></span>
+          <span class="badge degraded hidden" id="degraded">⚠︎ mock/yedek</span>
+        </div>
+        <div class="result-body" id="result-body"></div>
+        <div class="result-foot" id="result-foot"></div>
+      </section>
+
+      <div class="loading hidden" id="loading">
+        <span class="spinner"></span> Ajanlar çalışıyor…
+      </div>
+    </main>
+
+    <footer class="app-footer">
+      <a href="#" id="open-options">⚙︎ Ayarlar</a>
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

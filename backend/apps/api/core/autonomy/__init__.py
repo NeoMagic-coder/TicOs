@@ -22,6 +22,7 @@ from apps.api.core.autonomy.coordination import (
     BROADCAST,
     CoordinationBus,
     CoordinationMessage,
+    get_coordination_bus,
 )
 from apps.api.core.autonomy.goals import (
     AgentGoalProfile,
@@ -32,6 +33,8 @@ from apps.api.core.autonomy import ontology
 from apps.api.core.autonomy.marketplace_router import (
     MarketplaceRouter,
     MarketplaceTarget,
+    default_marketplace_targets,
+    get_marketplace_router,
 )
 
 __all__ = [
@@ -44,10 +47,13 @@ __all__ = [
     "CoordinationBus",
     "CoordinationMessage",
     "BROADCAST",
+    "get_coordination_bus",
     "AgentGoalProfile",
     "ReconciliationResult",
     "reconcile_proposals",
     "ontology",
     "MarketplaceRouter",
     "MarketplaceTarget",
+    "default_marketplace_targets",
+    "get_marketplace_router",
 ]

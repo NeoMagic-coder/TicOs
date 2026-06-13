@@ -76,7 +76,8 @@ Proje iki bölümden oluşur: **backend** (FastAPI, port 8000) ve **frontend** (
 - **Python** 3.11 veya üzeri
 - **Node.js** 18 veya üzeri (LTS önerilir)
 - **Git**
-- Bir **Gemini API Key** ([aistudio.google.com/apikey](https://aistudio.google.com/apikey))
+- Metin çağrıları için **OpenRouter API Key** veya **Gemini API Key**
+- Görsel, Vision, Voice ve embedding akışları için Gemini API Key
 
 ### 1. Depoyu Klonla (Ortak)
 
@@ -90,12 +91,23 @@ cd OneProduct-Agent-OS
 `backend/.env.local` dosyasını oluştur:
 
 ```env
+# Önerilen: metin tabanlı Hermes ve ajan çağrıları OpenRouter üzerinden
+LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=sk-or-v1-...
+OPENROUTER_MODEL=google/gemini-2.5-flash-lite
+
+# Gemini-native görsel, Vision, Voice ve embedding akışları
 GEMINI_API_KEY=AIza...
 GEMINI_MODEL=gemini-2.5-flash
-VITE_GEMINI_API_KEY=AIza...
+
+# Frontend'e LLM anahtarı gerekmez — tüm çağrılar backend /api/v1/llm/generate
+# proxy'sinden geçer. VITE_GEMINI_MODEL yalnızca UI'da model adı göstermek için.
 VITE_GEMINI_MODEL=gemini-2.5-flash
-LLM_PROVIDER=gemini
 ```
+
+OpenRouter çağrıları varsayılan olarak ZDR, veri toplama reddi, fiyat tavanı
+ve düşük gecikme tercihiyle yönlendirilir. Geçici OpenRouter arızalarında
+`GEMINI_API_KEY` tanımlıysa metin çağrıları Gemini'ye düşer.
 
 ---
 
@@ -213,6 +225,23 @@ npm run test:e2e
 # Tam doğrulama (tsc + vite build + pytest)
 scripts/check.sh
 ```
+
+### Üretim Dağıtımı
+
+Üretim compose dosyası PostgreSQL/pgvector, güvenli reverse proxy ve kapalı
+demo/docs ayarlarıyla çalışır. Gerçek sırları repoya eklemeyin:
+
+```bash
+cp docker/.env.prod.example docker/.env.prod
+# docker/.env.prod içindeki parolaları, API_KEY ve PUBLIC_HOST değerini değiştirin.
+docker compose --env-file docker/.env.prod -f docker/compose.prod.yml up -d --build
+```
+
+`API_KEY` tarayıcı bundle'ına gömülmez; reverse proxy tarafından backend
+isteklerine sunucu tarafında eklenir. Proxy varsayılan olarak yalnızca
+`127.0.0.1:8080` üzerinde dinler; alan adınızın TLS terminatörünü bu porta
+yönlendirin. Yatay ölçeklemede yalnızca bir süreç `SCHEDULER_ENABLED=true`
+kullanmalıdır.
 
 🤝 Katkıda Bulunma (Contributing)
 Bu depoyu çatallayın (Fork).

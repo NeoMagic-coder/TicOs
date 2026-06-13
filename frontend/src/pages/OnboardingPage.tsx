@@ -51,9 +51,9 @@ function TopMenubar({ phase, fleetArmed }: { phase: number; fleetArmed: number }
 
   return (
     <div className="ob-menubar">
-      <div className="ob-menubar__brand">
-        <span className="ob-menubar__mark" />
-        ONEPRODUCT
+      <div className="ob-menubar__brand" data-testid="ticosclaw-brand">
+        <img className="ob-menubar__mark" src="/ticosclaw-icon.png" alt="" aria-hidden="true" />
+        TICOSCLAW
         <span className="ob-menubar__sep" />
         <span className="ob-menubar__path">os // onboarding.boot</span>
       </div>

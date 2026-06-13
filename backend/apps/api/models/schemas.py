@@ -197,6 +197,9 @@ class ChatRequest(BaseModel):
     message: str
     history: list[ChatTurn] = Field(default_factory=list)
     product_context: dict[str, Any] | None = None
+    # Output language for user-visible text ("tr", "en", "de", ...).
+    # Unknown codes fall back to Turkish — see core.llm.language.
+    language: str = "tr"
 
 
 class ChatResponse(BaseModel):
@@ -288,7 +291,7 @@ class AgentLLMConfig(BaseModel):
     """Per-agent LLM model + provider override (serialised form)."""
 
     agent_id: str
-    provider: Literal["gemini", "mock"] = "gemini"
+    provider: Literal["gemini", "bedrock", "mock"] = "gemini"
     model: str = ""
     base_url: str = ""
     api_key_env: str = ""
@@ -302,7 +305,7 @@ class AgentLLMConfig(BaseModel):
 
 
 class AgentLLMConfigUpdate(BaseModel):
-    provider: Literal["gemini", "mock"] = "gemini"
+    provider: Literal["gemini", "bedrock", "mock"] = "gemini"
     model: str = ""
     base_url: str = ""
     api_key_env: str = ""
@@ -337,6 +340,31 @@ class LLMTestResponse(BaseModel):
     tokens_used: int = 0
     duration_ms: int = 0
     error: str | None = None
+
+
+class LLMHistoryTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class LLMGenerateRequest(BaseModel):
+    """Wire format for the browser-side completion proxy (legacy callGemini shape)."""
+
+    model_config = {"populate_by_name": True}
+
+    system: str = ""
+    user: str = Field(..., min_length=1, max_length=32000)
+    history: list[LLMHistoryTurn] = Field(default_factory=list)
+    json_mode: bool = Field(default=False, alias="json")
+    max_output_tokens: int = Field(default=4096, ge=1, le=32000)
+
+
+class LLMGenerateResponse(BaseModel):
+    text: str = ""
+    error: str | None = None
+    provider: str = ""
+    model: str = ""
+    tokens_used: int = 0
 
 
 class ToolExecutionResult(BaseModel):

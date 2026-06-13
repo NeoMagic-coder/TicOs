@@ -420,3 +420,20 @@ class MemoryRow(Base):
     meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
     embedding: Mapped[list[float]] = mapped_column(_EmbeddingColumn)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+class AutoResearchRunRow(Base):
+    """Represents a single optimization run (trial) of an AutoResearch loop."""
+
+    __tablename__ = "autoresearch_runs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    goal_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    recipe_name: Mapped[str] = mapped_column(String(256))
+    metric_name: Mapped[str] = mapped_column(String(128))
+    metric_value: Mapped[float] = mapped_column(Float, default=0.0)
+    parameters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(32), default="running", index=True)
+    iteration: Mapped[int] = mapped_column(Integer, default=0)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo } from 'react';
-import { Icon, AgentAvatar, Sparkline } from '@/components/AOS/widgets';
+import { Icon, AgentAvatar } from '@/components/AOS/widgets';
 import { AGENT_BY_ID } from '@/data/aos/mockData';
 import { useStore } from '@/stores/useStore';
 
@@ -122,7 +122,7 @@ const PricingPage = () => {
       });
     } catch (e: any) {
       quickAsk('Aktif ürünün tüm SKU\'ları için rakip fiyat taraması yap, sapanları işaretle ve önerilen aksiyonları listele.');
-      pushToast({ kind: 'info', title: 'Hermes üzerinden taranıyor', body: e?.message || String(e) });
+      pushToast({ kind: 'info', title: 'TicOSClaw üzerinden taranıyor', body: e?.message || String(e) });
     }
   };
   const applyAll = async () => {
@@ -149,7 +149,7 @@ const PricingPage = () => {
       }
     } catch (e: any) {
       quickAsk(`Aşağıdaki SKU'lar için fiyat önerilerini uygulamak üzere her biri için yüksek-riskli onay aç: ${pending.map((p: any) => p.sku).join(', ')}.`);
-      pushToast({ kind: 'info', title: 'Hermes üzerinden uygulanıyor', body: e?.message || String(e) });
+      pushToast({ kind: 'info', title: 'TicOSClaw üzerinden uygulanıyor', body: e?.message || String(e) });
     }
     setApplied((prev) => pending.reduce((acc: any, p: any) => ({ ...acc, [p.sku]: true }), prev));
   };

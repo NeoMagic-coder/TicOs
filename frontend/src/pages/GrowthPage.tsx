@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useMemo } from 'react';
-import { Icon, AgentAvatar, Sparkline } from '@/components/AOS/widgets';
+import { Icon, AgentAvatar } from '@/components/AOS/widgets';
 import { AGENT_BY_ID } from '@/data/aos/mockData';
 import { useStore } from '@/stores/useStore';
 
@@ -41,7 +41,7 @@ const GrowthPage = () => {
       }
     } catch (e: any) {
       quickAsk(`Yeni deney oluştur ve plana al — alan: ${newDraft.area}, hipotez: "${newDraft.hypothesis}". Başarı metriği ve süre öner.`);
-      pushToast({ kind: 'info', title: 'Hermes üzerinden planlanıyor', body: e?.message || String(e) });
+      pushToast({ kind: 'info', title: 'TicOSClaw üzerinden planlanıyor', body: e?.message || String(e) });
     }
     setShowNew(false);
     setNewDraft({ hypothesis: '', area: 'CRO' });

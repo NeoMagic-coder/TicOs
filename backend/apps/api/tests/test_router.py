@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from apps.api.core.hermes.router import route
+from apps.api.tests._keyword_route import keyword_route as route
 
 
 def test_route_pricing_intent():

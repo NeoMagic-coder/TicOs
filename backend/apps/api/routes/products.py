@@ -31,6 +31,7 @@ from apps.api.core.db import session_scope
 from apps.api.core.db.models import ProductRow
 from apps.api.core.llm.provider import LLMMessage, MockProvider, get_llm_provider
 from apps.api.core.logging import get_logger
+from apps.api.services.product_bridge import sync_workspace_product_to_inventory
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/products", tags=["products"])
@@ -102,6 +103,11 @@ async def upsert_product(body: ProductIn) -> Product:
         s.flush()
         result = _row_to_product(row)
     log.info("products.upserted", product=body.product_name)
+    if result.is_active:
+        sync_workspace_product_to_inventory(body.product_name)
+        from apps.api.core.autonomy.goal_loop import ensure_default_goals
+
+        ensure_default_goals(product_name=body.product_name)
     return result
 
 
@@ -358,4 +364,6 @@ async def activate_product(name: str) -> Product:
         s.execute(update(ProductRow).values(is_active=False))
         target.is_active = True
         s.flush()
-        return _row_to_product(target)
+        result = _row_to_product(target)
+    sync_workspace_product_to_inventory(name)
+    return result

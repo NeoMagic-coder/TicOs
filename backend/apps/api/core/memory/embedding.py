@@ -1,9 +1,8 @@
 """Embedding helper for the vector memory.
 
-Uses Gemini's ``gemini-embedding-001`` with ``output_dimensionality=768`` to
-keep the pgvector schema (768-dim) compatible; falls back to a deterministic
-hash-based mock embedding when no ``GEMINI_API_KEY`` is configured or the
-API call fails.
+Uses Amazon Bedrock Titan embeddings when ``AWS_BEARER_TOKEN_BEDROCK`` is set;
+falls back to a deterministic hash-based mock embedding when the API call fails
+or no token is configured.
 """
 from __future__ import annotations
 
@@ -23,36 +22,19 @@ async def embed_text(text: str) -> list[float]:
     if not text:
         return [0.0] * dim
 
-    if settings.gemini_api_key:
+    if settings.aws_bearer_token_bedrock:
         try:
-            from google import genai
-            from google.genai import types
+            from apps.api.core.llm.bedrock_runtime import embed_text as bedrock_embed
 
-            client = genai.Client(api_key=settings.gemini_api_key)
-            result = await client.aio.models.embed_content(
-                model=settings.embedding_model,
-                contents=text,
-                config=types.EmbedContentConfig(output_dimensionality=dim),
-            )
-            vec = list(result.embeddings[0].values)
-            if len(vec) == dim:
-                # gemini-embedding-001 only normalizes the full 3072-dim output;
-                # truncated dims must be L2-normalized client-side.
-                norm = math.sqrt(sum(v * v for v in vec)) or 1.0
-                return [v / norm for v in vec]
-            log.warning("embedding.dim_mismatch", expected=dim, got=len(vec))
+            return await bedrock_embed(text, dim=dim)
         except Exception as exc:
-            log.warning("embedding.gemini_failed", error=str(exc)[:200])
+            log.warning("embedding.bedrock_failed", error=str(exc)[:200])
 
     return _mock_embedding(text, dim)
 
 
 def _mock_embedding(text: str, dim: int) -> list[float]:
-    """Deterministic L2-normalised vector derived from SHA-256 bytes.
-
-    Not semantically meaningful — only used to keep the pipeline functional
-    when no Gemini key is configured (tests, MockProvider-only dev).
-    """
+    """Deterministic L2-normalised vector derived from SHA-256 bytes."""
     digest = hashlib.sha256(text.encode("utf-8")).digest()
     raw = (digest * ((dim // len(digest)) + 1))[:dim]
     vec = [(b / 255.0) * 2.0 - 1.0 for b in raw]

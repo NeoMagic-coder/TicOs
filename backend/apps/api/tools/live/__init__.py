@@ -3,8 +3,6 @@
 Each provider module exposes a ``register()`` function that registers its
 adapters with the OpenClaw executor via ``register_live_adapter``. The boot
 sequence in ``apps.api.main.lifespan`` calls :func:`register_all` once.
-
-Phase 1: shopify + trendyol + ga4 fully wired. Others are intentional stubs.
 """
 from __future__ import annotations
 
@@ -12,6 +10,7 @@ import traceback
 
 from apps.api.core.logging import get_logger
 from apps.api.tools.live import (
+    agent_handoff,
     collectapi,
     competitor_scan,
     compute_tools,
@@ -20,11 +19,13 @@ from apps.api.tools.live import (
     google_ads,
     image_analysis,
     image_fallback,
+    internal_analytics,
     klaviyo,
     llm_tools,
     meta_ads,
     review_aggregator,
     shopify,
+    tic_inventory,
     trendyol,
     web_search,
 )
@@ -33,7 +34,26 @@ log = get_logger(__name__)
 
 
 def register_all() -> None:
-    for mod in (shopify, trendyol, ga4, fakestore, collectapi, competitor_scan, meta_ads, google_ads, klaviyo, review_aggregator, image_fallback, image_analysis, llm_tools, compute_tools, web_search):
+    for mod in (
+        shopify,
+        trendyol,
+        ga4,
+        fakestore,
+        collectapi,
+        competitor_scan,
+        meta_ads,
+        google_ads,
+        klaviyo,
+        review_aggregator,
+        image_fallback,
+        image_analysis,
+        llm_tools,
+        compute_tools,
+        web_search,
+        agent_handoff,
+        tic_inventory,
+        internal_analytics,
+    ):
         try:
             mod.register()
         except Exception as exc:  # one provider must not break the others

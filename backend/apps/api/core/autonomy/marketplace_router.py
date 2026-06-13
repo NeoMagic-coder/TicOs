@@ -10,6 +10,9 @@ karar otoritesini elinde tutmaz. Her sevk:
 
 Bu router, "ince koordinatör + bağımsız ajan" desenidir: tek nokta hatası
 değildir, sadece bir routing katmanıdır.
+
+``get_marketplace_router()`` process singleton'ı varsayılan olarak
+``get_coordination_bus()`` kullanır — A2A relay otomatik aktiftir.
 """
 from __future__ import annotations
 
@@ -17,12 +20,19 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any
 
-from apps.api.core.autonomy.coordination import CoordinationBus, CoordinationMessage
+from apps.api.core.autonomy.coordination import (
+    CoordinationBus,
+    CoordinationMessage,
+    get_coordination_bus,
+)
 from apps.api.core.autonomy.goals import (
     AgentGoalProfile,
     ReconciliationResult,
     reconcile_proposals,
 )
+from apps.api.core.logging import get_logger
+
+log = get_logger(__name__)
 
 
 @dataclass
@@ -32,19 +42,40 @@ class MarketplaceTarget:
     profile: AgentGoalProfile
 
 
+def default_marketplace_targets() -> list[MarketplaceTarget]:
+    """Built-in marketplace → agent routing table."""
+    return [
+        MarketplaceTarget(
+            marketplace="trendyol",
+            agent_id="operations_agent",
+            profile=AgentGoalProfile(agent_id="operations_agent", objective="minimize_cost"),
+        ),
+        MarketplaceTarget(
+            marketplace="hepsiburada",
+            agent_id="catalog_agent",
+            profile=AgentGoalProfile(agent_id="catalog_agent", objective="maximize_margin"),
+        ),
+        MarketplaceTarget(
+            marketplace="shopify",
+            agent_id="store_setup_agent",
+            profile=AgentGoalProfile(agent_id="store_setup_agent", objective="maximize_margin"),
+        ),
+    ]
+
+
 class MarketplaceRouter:
     """Sipariş veya talep paketini ilgili pazaryeri ajan(lar)ına sevk eder."""
 
     def __init__(
         self,
-        bus: CoordinationBus,
-        targets: list[MarketplaceTarget],
+        bus: CoordinationBus | None = None,
+        targets: list[MarketplaceTarget] | None = None,
         *,
         sender_id: str = "marketplace_router",
         response_timeout_s: float = 5.0,
     ) -> None:
-        self.bus = bus
-        self.targets = {t.marketplace: t for t in targets}
+        self.bus = bus or get_coordination_bus()
+        self.targets = {t.marketplace: t for t in (targets or default_marketplace_targets())}
         self.sender_id = sender_id
         self.response_timeout_s = response_timeout_s
 
@@ -94,3 +125,18 @@ class MarketplaceRouter:
         return reconcile_proposals(
             proposals, [t.profile for t in targets], strategy="vote"
         )
+
+
+_ROUTER: MarketplaceRouter | None = None
+
+
+def get_marketplace_router() -> MarketplaceRouter:
+    """Process singleton — uses wired :func:`get_coordination_bus`."""
+    global _ROUTER
+    if _ROUTER is None:
+        _ROUTER = MarketplaceRouter()
+        log.info(
+            "marketplace_router.ready",
+            marketplaces=list(_ROUTER.targets.keys()),
+        )
+    return _ROUTER

@@ -1,12 +1,11 @@
 """Brand studio endpoints — generate visuals and refresh brand identity.
 
 POST /api/v1/brand/generate-image
-    Wraps the `brand_visual_generator` tool (Gemini image) so the frontend
+    Wraps the `brand_visual_generator` tool (Bedrock image) so the frontend
     Brand page can request a render without crafting a full RPC payload.
 
 POST /api/v1/brand/regenerate-identity
-    Phase 4 — runs the JSON-mode Gemini prompt **server-side** so the browser
-    no longer needs `VITE_GEMINI_API_KEY`. Returns the parsed BrandIdentity.
+    Runs the JSON-mode LLM prompt server-side via Bedrock (no browser API key).
 """
 from __future__ import annotations
 
@@ -168,17 +167,9 @@ def _extract_json(text: str) -> dict[str, Any] | None:
 
 @router.post("/regenerate-identity", response_model=dict[str, Any])
 async def regenerate_identity(body: RegenerateBrandRequest) -> dict[str, Any]:
-    """Server-side BrandIdentity generation. Eliminates the need for the
-    browser to hold `VITE_GEMINI_API_KEY`.
-
-    Uses Gemini with response_mime_type for reliable JSON output.
-    """
-    settings = get_settings()
+    """Server-side BrandIdentity generation via the configured LLM (Bedrock by default)."""
     user_prompt = f"{_product_brief(body.product)}\n\n{_BRAND_SCHEMA_PROMPT}"
     system_prompt = "Sen Brand Identity Agent'sın. Yalnızca geçerli JSON üret, başka metin/yorum yazma."
-
-    if settings.gemini_api_key:
-        return await _regenerate_via_gemini(body, user_prompt, system_prompt, settings)
 
     from apps.api.core.llm.provider import LLMMessage, MockProvider, get_llm_provider
 
@@ -186,7 +177,7 @@ async def regenerate_identity(body: RegenerateBrandRequest) -> dict[str, Any]:
     if isinstance(provider, MockProvider):
         raise HTTPException(
             status_code=503,
-            detail="LLM API anahtarı yapılandırılmamış (GEMINI_API_KEY gerekli)",
+            detail="LLM yapılandırılmamış (AWS_BEARER_TOKEN_BEDROCK gerekli)",
         )
 
     try:
@@ -215,57 +206,4 @@ async def regenerate_identity(body: RegenerateBrandRequest) -> dict[str, Any]:
     }
 
 
-async def _regenerate_via_gemini(
-    body: "RegenerateBrandRequest",
-    user_prompt: str,
-    system_prompt: str,
-    settings: Any,
-) -> dict[str, Any]:
-    from google import genai
-    from google.genai import errors as genai_errors
-    from google.genai import types
-
-    client = genai.Client(api_key=settings.gemini_api_key)
-    model = body.model or settings.gemini_model or "gemini-2.5-flash"
-
-    try:
-        resp = await client.aio.models.generate_content(
-            model=model,
-            contents=[types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)])],
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=0.7,
-                max_output_tokens=body.max_output_tokens,
-                response_mime_type="application/json",
-            ),
-        )
-    except genai_errors.ClientError as exc:
-        status = getattr(exc, "code", None) or getattr(exc, "status_code", None)
-        raise HTTPException(status_code=502, detail=f"Gemini {status}: {str(exc)[:200]}")
-    except Exception as exc:
-        log.exception("brand.regenerate_exception", error=str(exc))
-        raise HTTPException(status_code=502, detail=f"Gemini error: {str(exc)[:200]}")
-
-    text = ""
-    try:
-        text = "".join(
-            (part.text or "")
-            for part in (resp.candidates[0].content.parts if resp.candidates else [])
-        ).strip()
-    except Exception:
-        text = ""
-
-    if not text:
-        finish = getattr(resp.candidates[0], "finish_reason", None) if resp.candidates else None
-        raise HTTPException(status_code=502, detail=f"Empty Gemini response (finish={finish})")
-
-    identity = _extract_json(text)
-    if not identity or not isinstance(identity.get("brand_name"), str):
-        log.warning("brand.regenerate.parse_failed", head=text[:200])
-        raise HTTPException(status_code=502, detail="Could not parse BrandIdentity JSON")
-
-    return {
-        "identity": identity,
-        "model": model,
-        "raw_length": len(text),
-    }
+# Legacy Gemini path removed — all identity generation goes through get_llm_provider().

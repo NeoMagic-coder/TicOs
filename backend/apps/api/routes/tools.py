@@ -7,16 +7,24 @@ from apps.api.core.openclaw.executor import (
     PermissionDenied, ToolNotFound, _LIVE_ADAPTERS, get_executor,
 )
 from apps.api.core.openclaw.registry import get_registry
-from apps.api.models.schemas import ToolExecutionRequest, ToolExecutionResult, ToolManifest
+from apps.api.models.schemas import ToolExecutionRequest, ToolExecutionResult, ToolManifest, ToolMode
 from apps.api.services.tool_stat_store import get_tool_stat_store
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
 
+def _effective_mode(tool: ToolManifest) -> ToolMode:
+    """A registered live adapter always wins over a stale mock manifest flag."""
+    if tool.tool_id in _LIVE_ADAPTERS:
+        return ToolMode.live
+    return tool.mode
+
+
 def _enrich(tool: ToolManifest) -> ToolManifest:
     stats = get_tool_stat_store().get_stats(tool.tool_id)
     last = breaker_mod.last_status.get(tool.tool_id)
-    update: dict = {"stats": stats}
+    mode = _effective_mode(tool)
+    update: dict = {"stats": stats, "mode": mode}
     if last is not None:
         update["degraded"] = bool(last.get("degraded"))
         update["degraded_reason"] = last.get("reason")
@@ -49,10 +57,13 @@ async def tool_health(tool_id: str) -> dict:
     mode = getattr(tool, "mode", "mock")
     if hasattr(mode, "value"):
         mode = mode.value
+    effective = _effective_mode(tool)
+    if hasattr(effective, "value"):
+        effective = effective.value
     adapter_registered = tool_id in _LIVE_ADAPTERS
     last = breaker_mod.last_status.get(tool_id)
 
-    if mode == "live":
+    if effective == "live":
         if not adapter_registered:
             status = "degraded"
             reason = "Live mode but no adapter registered — will fail at runtime."
@@ -70,7 +81,7 @@ async def tool_health(tool_id: str) -> dict:
         reason = "Mock mode — synthetic responses."
     return {
         "tool_id": tool_id,
-        "mode": mode,
+        "mode": effective,
         "status": status,
         "adapter_registered": adapter_registered,
         "degraded": bool(last and last.get("degraded")),

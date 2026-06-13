@@ -1,4 +1,4 @@
-"""FastAPI entrypoint for OneProduct Agent OS.
+"""FastAPI entrypoint for TicOSClaw.
 
 Run locally:
     uvicorn apps.api.main:app --reload --port 8000
@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from apps.api.agents.registry import get_agent_registry
 from apps.api.core.config import get_settings
 from apps.api.core.db import init_db
-from apps.api.core.llm.image import IMAGES_DIR, generate_image
+from apps.api.core.llm.image import IMAGES_DIR, describe_image_provider, generate_image_safe
 from apps.api.core.llm.provider import get_llm_provider
 from apps.api.core.logging import get_logger, setup_logging
 from apps.api.core.db.engine import session_scope
@@ -34,32 +34,8 @@ from apps.api.core.hermes.orchestrator import get_orchestrator
 from apps.api.core.openclaw.executor import register_live_adapter
 from apps.api.core.openclaw.registry import get_registry
 from apps.api.core.scheduler import start_scheduler, stop_scheduler
-from apps.api.routes import agents as agents_route
-from apps.api.routes import approvals as approvals_route
-from apps.api.routes import brand as brand_route
-from apps.api.routes import chat as chat_route
-from apps.api.routes import dashboard as dashboard_route
-from apps.api.routes import demo as demo_route
-from apps.api.routes import graph as graph_route
-from apps.api.routes import grounding as grounding_route
-from apps.api.routes import growth as growth_route
-from apps.api.routes import integrations as integrations_route
-from apps.api.routes import knowledge as knowledge_route
-from apps.api.routes import llm as llm_route
-from apps.api.routes import automations as automations_route
-from apps.api.routes import goals as goals_route
-from apps.api.routes import org as org_route
-from apps.api.routes import policies as policies_route
-from apps.api.routes import pricing as pricing_route
-from apps.api.routes import products as products_route
-from apps.api.routes import research as research_route
-from apps.api.routes import rpc as rpc_route
-from apps.api.routes import scheduler as scheduler_route
-from apps.api.routes import skills as skills_route
-from apps.api.routes import tasks as tasks_route
-from apps.api.routes import tools as tools_route
-from apps.api.routes import voice as voice_route
-from apps.api.routes import webhooks as webhooks_route
+from apps.api.routes import register_routes
+from apps.api.shopping.db.database import init_db as init_shopping_db
 from apps.api.tools.live import register_all as register_live_tools
 
 
@@ -67,9 +43,10 @@ from apps.api.tools.live import register_all as register_live_tools
 async def lifespan(_app: FastAPI):
     settings = get_settings()
     setup_logging(debug=settings.debug)
-    log = get_logger("oneproduct.boot")
+    log = get_logger("ticosclaw.boot")
 
     init_db()
+    await init_shopping_db()
 
     # Paperclip-style org chart seed (idempotent — only inserts missing rows).
     from apps.api.core.org import seed_default_org
@@ -79,17 +56,25 @@ async def lifespan(_app: FastAPI):
     except Exception as exc:  # never block boot on seed failure
         log.warning("org.seed.failed", error=str(exc)[:200])
 
+    from apps.api.core.llm.seed import migrate_enabled_gemini_to_bedrock
+
+    try:
+        migrate_enabled_gemini_to_bedrock()
+    except Exception as exc:
+        log.warning("llm.seed.failed", error=str(exc)[:200])
+
     registry = get_registry()
     registry.load_manifests()
     agents = get_agent_registry()
 
-    register_live_adapter(
-        "brand_visual_generator",
-        lambda payload: generate_image(
+    async def _brand_visual_adapter(payload: dict[str, Any]) -> dict[str, Any]:
+        return await generate_image_safe(
             prompt=payload["prompt"],
-            model=payload.get("model") or "gemini-3-pro-image-preview",
-        ),
-    )
+            model=payload.get("model") or get_settings().bedrock_image_model,
+            variation_index=payload.get("variation_index"),
+        )
+
+    register_live_adapter("brand_visual_generator", _brand_visual_adapter)
 
     async def _memory_search_adapter(payload: dict[str, Any]) -> dict[str, Any]:
         matches = await search_memory(
@@ -149,7 +134,10 @@ async def lifespan(_app: FastAPI):
     register_live_adapter("spawn_subagent", _spawn_subagent_adapter)
 
     # Periodic autonomous jobs (hourly ops sweep, daily pricing + reviews).
-    start_scheduler(get_orchestrator())
+    if settings.scheduler_enabled:
+        start_scheduler(get_orchestrator())
+    else:
+        log.info("scheduler.disabled")
 
     # Multi-platform gateway adapters (Phase 2-B). Each adapter is a no-op
     # when its credentials are absent, so missing env vars don't break boot.
@@ -174,7 +162,10 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
-        description="Hermes orchestration + OpenClaw tool-use backend.",
+        description=(
+            "TicOSClaw: coklu ajan orkestrasyonu, guvenli arac calistirma, "
+            "e-ticaret operasyonlari ve alisveris karsilastirmasi."
+        ),
         lifespan=lifespan,
     )
 
@@ -252,33 +243,7 @@ def create_app() -> FastAPI:
                 })
         return items
 
-    app.include_router(chat_route.router, prefix="/api/v1")
-    app.include_router(agents_route.router, prefix="/api/v1")
-    app.include_router(tools_route.router, prefix="/api/v1")
-    app.include_router(tasks_route.router, prefix="/api/v1")
-    app.include_router(approvals_route.router, prefix="/api/v1")
-    app.include_router(knowledge_route.router, prefix="/api/v1")
-    app.include_router(scheduler_route.router, prefix="/api/v1")
-    app.include_router(automations_route.router, prefix="/api/v1")
-    app.include_router(rpc_route.router, prefix="/api/v1")
-    app.include_router(research_route.router, prefix="/api/v1")
-    app.include_router(skills_route.router, prefix="/api/v1")
-    app.include_router(brand_route.router, prefix="/api/v1")
-    app.include_router(pricing_route.router, prefix="/api/v1")
-    app.include_router(grounding_route.router, prefix="/api/v1")
-    app.include_router(products_route.router, prefix="/api/v1")
-    app.include_router(growth_route.router, prefix="/api/v1")
-    app.include_router(policies_route.router, prefix="/api/v1")
-    app.include_router(policies_route.autonomy_router, prefix="/api/v1")
-    app.include_router(dashboard_route.router, prefix="/api/v1")
-    app.include_router(demo_route.router, prefix="/api/v1")
-    app.include_router(graph_route.router, prefix="/api/v1")
-    app.include_router(integrations_route.router, prefix="/api/v1")
-    app.include_router(org_route.router, prefix="/api/v1")
-    app.include_router(goals_route.router, prefix="/api/v1")
-    app.include_router(llm_route.router, prefix="/api/v1")
-    app.include_router(webhooks_route.router)  # /webhooks/*  (no /api/v1 prefix)
-    app.include_router(voice_route.router)     # /ws/voice    (websocket, no prefix)
+    register_routes(app)
 
     @app.get("/api/v1/backends", tags=["system"])
     async def list_backends() -> list[dict[str, Any]]:
@@ -315,9 +280,10 @@ def create_app() -> FastAPI:
             "agents": len(agents.all()),
             "tools": len(tools.all()),
             "llm": type(get_llm_provider()).__name__.replace("Provider", "").lower(),
+            "image": describe_image_provider(),
             "_dbg_provider_class": type(get_llm_provider()).__name__,
             "_dbg_llm_provider_setting": get_settings().llm_provider,
-            "_dbg_gemini_key_set": bool(get_settings().gemini_api_key),
+            "_dbg_bedrock_token_set": bool(get_settings().aws_bearer_token_bedrock),
         }
 
     return app

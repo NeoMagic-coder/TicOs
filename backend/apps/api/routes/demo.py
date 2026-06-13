@@ -344,8 +344,8 @@ async def demo_play(req: DemoPlayRequest) -> StreamingResponse:
                                 if isinstance(img, dict) and img.get("url"):
                                     image_url = img["url"]
                                     state["brand_image_url"] = image_url
-                            except Exception as exc:  # noqa: BLE001
-                                log_evt = str(exc)[:200]  # noqa: F841
+                            except Exception:  # noqa: BLE001
+                                pass
                         yield _sse(
                             "tool_called",
                             {

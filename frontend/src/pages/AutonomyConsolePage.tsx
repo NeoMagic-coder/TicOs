@@ -323,7 +323,7 @@ const AuditPanel = ({ entries, totalCost }: { entries: ToolEntry[]; totalCost: n
 // ---------------- Demo Play button ----------------
 // Streams /api/v1/demo/play SSE and projects step_started/step_completed
 // events onto the existing chatProgress store so the DAG + roster panels
-// light up exactly like a real Hermes run. Pitch-time one-tap demo trigger.
+// light up exactly like a real TicOSClaw run. Pitch-time one-tap demo trigger.
 const DemoPlayButton = () => {
   const [running, setRunning] = useState(false);
   const [summary, setSummary] = useState<{ auto: number; escalated: number } | null>(null);
@@ -445,8 +445,6 @@ const DemoPlayButton = () => {
         }
       }
     } catch (e) {
-      // Best-effort; demo player failure shouldn't crash the page.
-      console.warn('demo play failed', e);
     } finally {
       setRunning(false);
     }
@@ -473,8 +471,122 @@ const DemoPlayButton = () => {
   );
 };
 
+// ---------------- Autonomy mode + scheduler ----------------
+const ModeSchedulerBar = () => {
+  const autonomyStatus = useStore((s: any) => s.autonomyStatus);
+  const autonomyEnabled = useStore((s: any) => s.autonomyEnabled);
+  const setAutonomyEnabled = useStore((s: any) => s.setAutonomyEnabled);
+  const patchAutonomyMode = useStore((s: any) => s.patchAutonomyMode);
+  const runAutonomySweep = useStore((s: any) => s.runAutonomySweep);
+  const runGoalLoopTick = useStore((s: any) => s.runGoalLoopTick);
+  const loadAutonomyStatus = useStore((s: any) => s.loadAutonomyStatus);
+
+  useEffect(() => {
+    void loadAutonomyStatus();
+    const id = setInterval(() => void loadAutonomyStatus(), 45000);
+    return () => clearInterval(id);
+  }, [loadAutonomyStatus]);
+
+  const mode = autonomyStatus?.mode || {};
+  const goalLoop = autonomyStatus?.goal_loop || {};
+  const jobs: any[] = autonomyStatus?.scheduler?.jobs || [];
+  const pendingLow = autonomyStatus?.pending_low_risk ?? 0;
+  const pendingTotal = autonomyStatus?.pending_approvals ?? 0;
+
+  const Toggle = ({ k, label }: { k: string; label: string }) => (
+    <button
+      type="button"
+      className={`btn btn--sm ${mode[k] ? 'btn--primary' : 'btn--ghost'}`}
+      onClick={() => void patchAutonomyMode({ [k]: !mode[k] })}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div className="hub-layout hub-layout--1-1" style={{ marginBottom: 12 }}>
+      <div className="panel">
+        <div className="panel__head spread">
+          <h3>Otonom Mod</h3>
+          <span className={`chip ${autonomyEnabled ? 'chip--acid' : ''}`}>
+            {autonomyEnabled ? 'AKTİF' : 'KAPALI'}
+          </span>
+        </div>
+        <div className="panel__body col-flex">
+          <div className="page-toolbar">
+            <button
+              type="button"
+              className={`btn btn--sm ${autonomyEnabled ? 'btn--primary' : ''}`}
+              onClick={() => void setAutonomyEnabled(!autonomyEnabled)}
+            >
+              {autonomyEnabled ? 'Otonom modu kapat' : 'Otonom modu aç'}
+            </button>
+            <Toggle k="auto_sync" label="Otomatik sync" />
+            <Toggle k="auto_brief" label="Günlük brief" />
+            <Toggle k="auto_approve_low_risk" label="Düşük risk onay" />
+            <Toggle k="auto_goal_loop" label="Hedef döngüsü" />
+            <button type="button" className="btn btn--sm btn--ghost" onClick={() => void runAutonomySweep()}>
+              Şimdi tara
+            </button>
+            <button type="button" className="btn btn--sm btn--ghost" onClick={() => void runGoalLoopTick()}>
+              Hedef tick
+            </button>
+          </div>
+          <div className="mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+            {pendingTotal} bekleyen onay · {pendingLow} düşük risk
+            {goalLoop.stale_count != null && <> · {goalLoop.stale_count} stale hedef</>}
+            {autonomyStatus?.next_job?.next_run_time && (
+              <> · sonraki iş {new Date(autonomyStatus.next_job.next_run_time).toLocaleString('tr-TR')}</>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel__head">
+          <h3>Zamanlanmış İşler</h3>
+          <span className="panel__head-tag">{jobs.length} job</span>
+        </div>
+        <div className="panel__body" style={{ padding: 0, maxHeight: 220, overflowY: 'auto' }}>
+          <table className="table" style={{ fontSize: 11 }}>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Sonraki</th>
+                <th>Son çalışma</th>
+              </tr>
+            </thead>
+            <tbody>
+              {jobs.map((j) => (
+                <tr key={j.id}>
+                  <td className="mono">{j.id}</td>
+                  <td className="mono tnum">
+                    {j.next_run_time
+                      ? new Date(j.next_run_time).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })
+                      : '—'}
+                  </td>
+                  <td className="mono" style={{ color: 'var(--fg-3)' }}>
+                    {j.last_run?.summary || j.last_run?.status || '—'}
+                  </td>
+                </tr>
+              ))}
+              {jobs.length === 0 && (
+                <tr>
+                  <td colSpan={3} style={{ textAlign: 'center', color: 'var(--fg-4)', padding: 16 }}>
+                    Scheduler kapalı veya backend offline
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ---------------- Page ----------------
-const AutonomyConsolePage = () => {
+const AutonomyConsolePage = ({ embedded = false }: { embedded?: boolean; navigate?: (p: string) => void }) => {
   const chatProgress = useStore((s: any) => s.chatProgress);
   const auditLogs = useStore((s: any) => s.auditLogs);
   const tasks = useStore((s: any) => s.tasks);
@@ -497,6 +609,9 @@ const AutonomyConsolePage = () => {
           confidence: typeof (p as any).confidence === 'number' ? (p as any).confidence : prev.confidence,
           cost_usd: typeof (p as any).cost_usd === 'number' ? (p as any).cost_usd : prev.cost_usd,
         };
+      } else if (p.event === 'node_injected' && (p as any).agent_id) {
+        const aid = (p as any).agent_id as string;
+        if (!state.supporting.includes(aid)) state.supporting = [...state.supporting, aid];
       }
     }
     return state;
@@ -554,16 +669,21 @@ const AutonomyConsolePage = () => {
   const totalCost = toolEntries.reduce((acc, e) => acc + (e.cost_usd || 0), 0);
 
   return (
-    <div className="page">
-      <div className="page__breadcrumb mono">HOME <span>›</span> AUTONOMY CONSOLE</div>
+    <div className={`page ${embedded ? 'hub-embedded-page' : ''}`}>
+      {!embedded && (
+        <div className="page__breadcrumb mono">HOME <span>›</span> AUTONOMY CONSOLE</div>
+      )}
       <div className="page__header">
-        <div>
-          <h1 className="page__title">Autonomy Console</h1>
-          <p className="page__sub">Canlı ajan nabzı, DAG akışı, audit log ve otonomi politikası — tek ekranda.</p>
-        </div>
+        {!embedded && (
+          <div>
+            <h1 className="page__title">Autonomy Console</h1>
+            <p className="page__sub">Canlı ajan nabzı, scheduler, policy ve audit — tek ekranda.</p>
+          </div>
+        )}
         <DemoPlayButton />
       </div>
 
+      <ModeSchedulerBar />
       <PolicyBar />
 
       <div
