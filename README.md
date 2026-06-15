@@ -109,6 +109,40 @@ VITE_GEMINI_MODEL=gemini-2.5-flash
 
 OpenRouter çağrıları varsayılan olarak ZDR, veri toplama reddi, fiyat tavanı ve düşük gecikme tercihiyle yönlendirilir. Geçici OpenRouter arızalarında `GEMINI_API_KEY` tanımlıysa metin çağrıları Gemini'ye düşer.
 
+### Google OAuth Girişi
+
+OAuth varsayılan olarak kapalıdır; açıldığında uygulama kabuğu ve `/api/v1/*` uçları
+imzalı, süreli `HttpOnly` oturum çerezi gerektirir. Google Cloud Console'da
+**Web application** OAuth istemcisi oluşturun ve yerel geliştirme için şu
+yönlendirme URI'sini ekleyin:
+
+```text
+http://localhost:8000/api/v1/auth/callback
+```
+
+Ardından `backend/.env.local` dosyasına ekleyin:
+
+```env
+AUTH_ENABLED=true
+AUTH_SESSION_SECRET=replace-with-at-least-32-random-characters
+GOOGLE_OAUTH_CLIENT_ID=...apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=...
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:8000/api/v1/auth/callback
+FRONTEND_URL=http://localhost:5173
+
+# İsteğe bağlı: yalnızca belirtilen Google Workspace alan adlarına izin ver.
+OAUTH_ALLOWED_EMAIL_DOMAINS=["example.com"]
+```
+
+Güçlü bir oturum sırrı üretmek için:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Üretimde callback ve frontend adreslerini HTTPS kullanacak şekilde değiştirin ve
+`AUTH_COOKIE_SECURE=true` bırakın.
+
 ---
 
 ### 🍎 macOS

@@ -54,6 +54,9 @@ MANIFEST
 .env.*
 !.env.example
 !docker/.env.prod.example
+!docker/cloudrun.env.yaml.example
+docker/cloudrun.env.yaml
+.firebase/
 .venv
 env/
 venv/

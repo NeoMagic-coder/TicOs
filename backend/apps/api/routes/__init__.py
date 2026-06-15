@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from apps.api.routes import agents
 from apps.api.routes import autoresearch
 from apps.api.routes import approvals
+from apps.api.routes import auth
 from apps.api.routes import automations
 from apps.api.routes import brand
 from apps.api.routes import chat
@@ -47,6 +48,7 @@ from apps.api.shopping.api.routes import router as shopping_router
 API_PREFIX = "/api/v1"
 
 API_ROUTERS = (
+    auth.router,
     tasks.router,
     ticosclaw.router,
     approvals.router,

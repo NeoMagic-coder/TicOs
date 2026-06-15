@@ -32,6 +32,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:5175",
+        "https://ticosclaw.web.app",
+        "https://ticosclaw.firebaseapp.com",
     ]
 
     # LLM provider selection: "gemini" | "bedrock" | "mock" | "" (auto-detect)
@@ -205,6 +207,20 @@ class Settings(BaseSettings):
     # ``X-API-Key`` header matching this value. Empty disables auth (default,
     # for local dev). ``/health`` and ``/metrics`` are always exempt.
     api_key: str = ""
+
+    # Google OAuth / OIDC login. Disabled by default so existing local
+    # development remains frictionless until credentials are configured.
+    auth_enabled: bool = False
+    auth_session_secret: str = ""
+    auth_session_ttl_seconds: int = 28_800
+    auth_cookie_secure: bool = False
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    google_oauth_redirect_uri: str = "http://localhost:8000/api/v1/auth/callback"
+    oauth_allowed_email_domains: list[str] = []
+    frontend_url: str = "http://localhost:5173"
+    # Firebase Auth — verify ID tokens from the web app (no service account required).
+    firebase_project_id: str = ""
 
     # Observability — OpenTelemetry + Prometheus.
     otel_enabled: bool = True

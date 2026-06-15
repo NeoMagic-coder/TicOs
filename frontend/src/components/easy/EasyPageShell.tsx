@@ -17,7 +17,7 @@ export function EasyPageShell({
   children,
 }: EasyPageShellProps) {
   return (
-    <div className="easy-page">
+    <div className="easy-page easy-page--spread">
       <header className="easy-page__head">
         <button type="button" className="easy-page__back" onClick={onBack}>
           <Icon name="chevleft" size={14} />

@@ -27,3 +27,4 @@ opentelemetry-instrumentation-fastapi==0.48b0
 opentelemetry-instrumentation-httpx==0.48b0
 apscheduler==3.10.4
 google-auth>=2.0
+firebase-admin>=6.5.0

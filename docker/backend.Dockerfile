@@ -14,12 +14,19 @@ ENV PYTHONUNBUFFERED=1 \
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 COPY --chown=appuser:appuser backend/apps/api/requirements.txt /app/apps/api/requirements.txt
-RUN pip install -r /app/apps/api/requirements.txt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc g++ \
+    && pip install -r /app/apps/api/requirements.txt \
+    && apt-get purge -y gcc g++ \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --chown=appuser:appuser backend/apps /app/apps
+COPY --chown=appuser:appuser docker/cloudrun-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # Development SQLite and generated AutoResearch reports need writable paths.
-RUN mkdir -p /app/apps/api/data /app/apps/api/autoresearch/reports \
+RUN mkdir -p /app/apps/api/data /app/apps/api/autoresearch/reports /tmp \
     && chown -R appuser:appuser /app/apps/api/data /app/apps/api/autoresearch/reports
 
 USER appuser
@@ -27,8 +34,7 @@ USER appuser
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD python -c "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=3).status == 200 else 1)"
+  CMD python -c "import os, urllib.request, sys; port=os.environ.get('PORT','8000'); sys.exit(0 if urllib.request.urlopen(f'http://localhost:{port}/health', timeout=3).status == 200 else 1)"
 
-# One process owns the in-process scheduler. Horizontally scaled API replicas
-# must set SCHEDULER_ENABLED=false and run exactly one scheduler owner.
-CMD ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips=*"]
+# Cloud Run sets PORT; local docker still defaults to 8000.
+ENTRYPOINT ["/entrypoint.sh"]

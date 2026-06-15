@@ -1,9 +1,9 @@
 // Tüm özellikler — ana sayfa; tüm ekranlara buradan gidilir.
 import React from 'react';
 import { Icon } from '@/components/AOS/widgets';
+import { AuthSessionControls } from '@/components/auth/AuthSessionControls';
 import { EasyPageShell } from '@/components/easy/EasyPageShell';
 import { ADVANCED_PAGES } from '@/lib/navigation/hubs';
-import { useStore } from '@/stores/useStore';
 
 const STORE_EXTRA = [
   { id: 'tic_products', label: 'Ürünler', icon: 'package', hint: 'Stok listesi' },
@@ -32,17 +32,16 @@ type EasyFeaturesPageProps = {
 };
 
 export default function EasyFeaturesPage({ navigate, embedded, isHome }: EasyFeaturesPageProps) {
-  const product = useStore((s) => s.onboardedProduct);
-  const productName = product?.product_name || 'Mağaza';
   const go = (page: string) => navigate?.(page);
   const home = isHome ?? false;
 
   const body = (
-    <div className="easy-features">
+    <div className={`easy-features ${home ? 'easy-features--spread' : ''}`}>
       {home && (
-        <p className="easy-features__welcome">
-          <strong>{productName}</strong> — aşağıdan istediğin bölüme geç.
-        </p>
+        <section className="easy-features__group easy-features__group--account">
+          <h2 className="easy-features__group-title">Hesap</h2>
+          <AuthSessionControls variant="card" />
+        </section>
       )}
       {!home && (
         <p className="easy-features__note">
@@ -76,19 +75,17 @@ export default function EasyFeaturesPage({ navigate, embedded, isHome }: EasyFea
 
   if (embedded) {
     return (
-      <div className={`easy-page easy-page--embedded ${home ? 'easy-page--home' : ''}`}>
-        <header className="easy-page__head">
-          {!home && (
+      <div className={`easy-page easy-page--embedded easy-page--spread ${home ? 'easy-page--home' : ''}`}>
+        {!home && (
+          <header className="easy-page__head">
             <button type="button" className="easy-page__back" onClick={() => go('dashboard')}>
               <Icon name="chevleft" size={14} />
               Ana sayfaya dön
             </button>
-          )}
-          <h1 className="easy-page__title">{home ? 'Tüm özellikler' : 'Tüm özellikler'}</h1>
-          <p className="easy-page__sub">
-            {home ? 'Mağaza ve tüm araçlar — dokunarak aç.' : 'İstediğin ekrana dokun — hepsi çalışıyor.'}
-          </p>
-        </header>
+            <h1 className="easy-page__title">Tüm özellikler</h1>
+            <p className="easy-page__sub">İstediğin ekrana dokun — hepsi çalışıyor.</p>
+          </header>
+        )}
         {body}
       </div>
     );

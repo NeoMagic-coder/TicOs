@@ -1,0 +1,14 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - docker/backend.Dockerfile
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/ticosclaw/ticosclaw-api:${_TAG}
+      - .
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/ticosclaw/ticosclaw-api:${_TAG}
+substitutions:
+  _REGION: europe-west1
+  _TAG: latest

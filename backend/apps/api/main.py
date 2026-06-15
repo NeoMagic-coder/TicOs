@@ -182,7 +182,14 @@ def create_app() -> FastAPI:
         from fastapi import Request
         from fastapi.responses import JSONResponse
 
-        _EXEMPT_PATHS = ("/health", "/metrics", "/docs", "/openapi.json", "/redoc")
+        _EXEMPT_PATHS = (
+            "/health",
+            "/metrics",
+            "/docs",
+            "/openapi.json",
+            "/redoc",
+            "/api/v1/auth",
+        )
 
         @app.middleware("http")
         async def _api_key_gate(request: Request, call_next):
@@ -196,6 +203,36 @@ def create_app() -> FastAPI:
                 return JSONResponse(
                     {"detail": "missing or invalid X-API-Key"}, status_code=401
                 )
+            return await call_next(request)
+
+    if settings.auth_enabled:
+        from fastapi import Request
+        from fastapi.responses import JSONResponse
+
+        @app.middleware("http")
+        async def _oauth_session_gate(request: Request, call_next):
+            path = request.url.path
+            if (
+                request.method == "OPTIONS"
+                or not path.startswith("/api/")
+                or path.startswith("/api/v1/auth")
+            ):
+                return await call_next(request)
+
+            from apps.api.routes.auth import auth_configured, current_user_from_request
+
+            if not auth_configured():
+                return JSONResponse(
+                    {"detail": "auth is not configured"},
+                    status_code=503,
+                )
+            user = current_user_from_request(request)
+            if not user:
+                return JSONResponse(
+                    {"detail": "authentication required"},
+                    status_code=401,
+                )
+            request.state.user = user
             return await call_next(request)
 
     setup_telemetry(app)
