@@ -145,7 +145,7 @@
     },
     "allowed_agents": ["store_setup_agent", "supervisor"],
     "cost_estimate_usd": 0.0,
-    "mode": "mock",
+    "mode": "live",
     "tags": ["store", "dolap", "marketplace"]
   },
   {

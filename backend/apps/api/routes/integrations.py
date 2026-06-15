@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from apps.api.core.config import get_settings
+from apps.api.core.dolap.client import dolap_configured
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
@@ -54,6 +55,19 @@ def list_integrations() -> list[Integration]:
         mode="live" if (s.trendyol_supplier_id and s.trendyol_api_key) else "stub",
         last_sync=_now_iso() if (s.trendyol_supplier_id and s.trendyol_api_key) else None,
         notes=None if (s.trendyol_supplier_id and s.trendyol_api_key) else "TRENDYOL_SUPPLIER_ID, TRENDYOL_API_KEY ve TRENDYOL_API_SECRET gerekli.",
+    ))
+
+    dolap_ok = dolap_configured()
+    dolap_label = s.dolap_nickname or s.dolap_username or ("token" if s.dolap_access_token else "—")
+    out.append(Integration(
+        id="dolap",
+        platform="Dolap",
+        icon="👗",
+        store_name=f"@{dolap_label}" if dolap_ok else "—",
+        status="connected" if dolap_ok else "disconnected",
+        mode="live" if dolap_ok else "stub",
+        last_sync=_now_iso() if dolap_ok else None,
+        notes=None if dolap_ok else "DOLAP_ACCESS_TOKEN veya DOLAP_USERNAME + DOLAP_PASSWORD gerekli.",
     ))
 
     ga4_ok = bool(s.ga4_property_id and (s.ga4_service_account_json or s.ga4_access_token))

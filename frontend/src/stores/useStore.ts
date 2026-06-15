@@ -4,6 +4,18 @@ import type { AgentSpec, Task, Approval, ToolManifest, KnowledgeDocument, ChatMe
 import { agents as seedAgents } from '@/data/agents';
 import { tools as seedTools } from '@/data/tools';
 import { seedTasks, seedApprovals, seedKnowledge, seedAuditLogs, seedIntegrations, seedChatHistory, makeDashboardForProduct, makeDemoDashboardForProduct } from '@/data/seed';
+import { isWallpaperId } from '@/components/wallpapers/types';
+import { isWallpaperCommand, matchWallpaperId } from '@/lib/wallpaper/wallpaperIntent';
+import { useWallpaperStore } from '@/stores/useWallpaperStore';
+import {
+  extractActionLines,
+  shouldAutoRun,
+  SUPERVISOR_INTENTS,
+  formatRunSummary,
+  type ActionRunResult,
+} from '@/lib/actions/actionRunner';
+import { AUTO_EXECUTE_ACTIONS } from '@/lib/easyMode';
+import { pushToast } from '@/components/AOS/Toast';
 
 function dashboardFromSnapshot(snap: Record<string, unknown>): DashboardSummary & { _isDemo?: boolean; _source?: string; _measured_at?: string | null } {
   const source = String(snap.source || 'derived');
@@ -33,7 +45,6 @@ import { seedOnboardedProduct, seedReviews, seedInfluencers, seedExperiments, se
 import { callGemini, isGeminiConfigured } from '@/lib/gemini';
 import { BASE_URL, chatBackend, chatWithFallback, backendReachable, backendHeaders, estimateApprovalImpact as estimateApprovalImpactApi, resolveBackendUrl, streamChatBackend, type ChatBackendResponse, type ChatStreamEvent } from '@/lib/api';
 import { v4 as uuidv4 } from 'uuid';
-import { pushToast } from '@/components/AOS/Toast';
 
 const ALLOWED_RISK = new Set(['low', 'medium', 'high', 'critical']);
 
@@ -203,6 +214,8 @@ const PAGE_ALIASES: Record<string, string> = {
   ayarlar: 'settings', settings: 'settings', ayar: 'settings',
   otonom: 'autonomy_console', otonomi: 'autonomy_console', autonomy: 'autonomy_console', 'otonom karar': 'autonomy_console',
   hedef: 'goals', hedefler: 'goals', goals: 'goals',
+  'duvar kağıdı': 'wallpapers', 'duvar kagidi': 'wallpapers', 'duvar kağıtları': 'wallpapers', 'duvar kagitlari': 'wallpapers',
+  wallpaper: 'wallpapers', wallpapers: 'wallpapers', 'arka plan': 'wallpapers', arkaplan: 'wallpapers',
 };
 
 /** Lightweight intent matcher — translates a Turkish chat command into a
@@ -232,6 +245,17 @@ const SLASH_COMMANDS: Record<string, (rest: string) => { intent: string; params?
     : { intent: 'navigate', params: { page: 'goals' } }),
   reset:    () => ({ intent: 'reset_all' }),
   debug:    () => ({ intent: 'toggle_debug' }),
+  wallpaper: (rest) => {
+    const id = matchWallpaperId(rest);
+    if (id) return { intent: 'set_wallpaper', params: { id } };
+    return { intent: 'navigate', params: { page: 'wallpapers' } };
+  },
+  duvar: (rest) => {
+    const id = matchWallpaperId(rest);
+    if (id) return { intent: 'set_wallpaper', params: { id } };
+    if (rest.trim()) return { intent: 'set_wallpaper', params: { id: 'aurora-flow' } };
+    return { intent: 'navigate', params: { page: 'wallpapers' } };
+  },
 };
 
 function detectIntent(raw: string): { intent: string; params?: Record<string, string> } | null {
@@ -307,6 +331,24 @@ function detectIntent(raw: string): { intent: string; params?: Record<string, st
   // ── Influencers ───────────────────────────────────────────────────────────────
   if (has('influencer') && has('teklif', 'mesaj', 'gönder', 'gonder', 'ulaş', 'ulas'))
     return { intent: 'contact_influencers' };
+
+  // ── Duvar kağıdı / wallpaper ────────────────────────────────────────────────
+  if (isWallpaperCommand(t)) {
+    if (has('kaldır', 'kaldir', 'sil', 'çıkar', 'cikar', 'yok', 'temizle', 'kapat'))
+      return { intent: 'clear_wallpaper' };
+    const matched = matchWallpaperId(t);
+    if (matched) return { intent: 'set_wallpaper', params: { id: matched } };
+    if (
+      has('ayarla', 'ayar', 'seç', 'sec', 'yap', 'değiştir', 'degistir', 'kur', 'koy', 'aktif', 'kullan')
+    ) {
+      return { intent: 'set_wallpaper', params: { id: 'aurora-flow' } };
+    }
+    if (hasNavVerb || has('galeri', 'liste', 'seçenek', 'secenek'))
+      return { intent: 'navigate', params: { page: 'wallpapers' } };
+  }
+
+  if (has('sipariş', 'siparis') && has('ekle', 'oluştur', 'olustur', 'yeni', 'gir', 'kayıt', 'kayit'))
+    return { intent: 'navigate', params: { page: 'tic_orders', add: '1' } };
 
   // ── Tools ─────────────────────────────────────────────────────────────────────
   if ((has('araç', 'arac', 'tool') || has('mock', 'live')) && has('mock') && has('live', 'canlı', 'canli') && has('geçir', 'gecir', 'değiştir', 'degistir'))
@@ -489,11 +531,19 @@ export interface AppState {
 
   // Supervisor command bus — lets the chat actually mutate app state from any page
   executeSupervisorAction: (intent: string, params?: Record<string, string>) => string | null;
+  tryExecuteFromText: (text: string) => string | null;
+  runRecommendedActions: (
+    actions: import('@/types').RecommendedAction[],
+    content?: string,
+    taskId?: string,
+  ) => import('@/lib/actions/actionRunner').ActionRunResult;
 
   // Floating supervisor dock (global chat on every page)
   supervisorDockOpen: boolean;
   toggleSupervisorDock: () => void;
   setSupervisorDockOpen: (open: boolean) => void;
+  ordersQuickAddOpen: boolean;
+  setOrdersQuickAddOpen: (open: boolean) => void;
 
   // Debug mode
   debugMode: boolean;
@@ -897,12 +947,15 @@ export const useStore = create<AppState>()(persist((set, get) => ({
 
       // 2. Add chat reply with image references (if any).
       const images = extractImageUrls(res.content);
+      let assistantBody = images.length > 0
+        ? `${res.content}\n\n${images.map((u) => `![görsel](${u})`).join('\n')}`
+        : res.content;
+      const runSummary = formatRunSummary(persisted.actionRun);
+      if (runSummary) assistantBody += `\n\n---\n🤖 **Otomatik uygulandı**\n${runSummary}`;
       get().addChatMessage({
         role: 'assistant',
         agent_id: res.agent_outputs[0]?.agent_id ?? 'supervisor',
-        content: images.length > 0
-          ? `${res.content}\n\n${images.map((u) => `![görsel](${u})`).join('\n')}`
-          : res.content,
+        content: assistantBody,
         task_id: persisted.taskId,
         thinking: res.thinking ?? undefined,
         tools_used: res.tools_used,
@@ -1073,12 +1126,15 @@ export const useStore = create<AppState>()(persist((set, get) => ({
       });
 
       const images = extractImageUrls(finalRes.content);
+      let assistantBody = images.length > 0
+        ? `${finalRes.content}\n\n${images.map((u) => `![görsel](${u})`).join('\n')}`
+        : finalRes.content;
+      const runSummary = formatRunSummary(persisted.actionRun);
+      if (runSummary) assistantBody += `\n\n---\n🤖 **Otomatik uygulandı**\n${runSummary}`;
       get().addChatMessage({
         role: 'assistant',
         agent_id: finalRes.agent_outputs[0]?.agent_id ?? 'supervisor',
-        content: images.length > 0
-          ? `${finalRes.content}\n\n${images.map((u) => `![görsel](${u})`).join('\n')}`
-          : finalRes.content,
+        content: assistantBody,
         task_id: persisted.taskId,
         thinking: finalRes.thinking ?? undefined,
         tools_used: finalRes.tools_used,
@@ -2100,6 +2156,87 @@ export const useStore = create<AppState>()(persist((set, get) => ({
 
   // Supervisor command bus — executes recognized intents and returns a
   // human-readable acknowledgement (or null when the action isn't applicable).
+  tryExecuteFromText: (text) => {
+    const intent = detectIntent(text);
+    if (!intent) return null;
+    return get().executeSupervisorAction(intent.intent, intent.params);
+  },
+
+  runRecommendedActions: (actions, content, taskId) => {
+    const s = get();
+    const result: ActionRunResult = { executed: [], skipped: [], queued: [] };
+    const tried = new Set<string>();
+
+    const tryOne = (text: string, rec?: import('@/types').RecommendedAction) => {
+      const key = text.trim().toLowerCase();
+      if (!key || tried.has(key)) return;
+      tried.add(key);
+
+      if (rec && !shouldAutoRun(rec, s.autonomyEnabled)) {
+        if (rec.requires_approval) result.queued.push(rec.action || text);
+        else result.skipped.push(rec.action || text);
+        return;
+      }
+
+      let ack: string | null = null;
+      if (rec && SUPERVISOR_INTENTS.has(rec.action)) {
+        const params: Record<string, string> = {};
+        for (const [k, v] of Object.entries(rec.params || {})) {
+          if (typeof v === 'string') params[k] = v;
+        }
+        ack = s.executeSupervisorAction(rec.action, params);
+      }
+      if (!ack) {
+        const intent = detectIntent(text);
+        if (intent) ack = s.executeSupervisorAction(intent.intent, intent.params);
+      }
+      if (!ack && rec && rec.action !== text) {
+        const intent = detectIntent(rec.action);
+        if (intent) ack = s.executeSupervisorAction(intent.intent, intent.params);
+      }
+      if (ack) result.executed.push(ack.replace(/\*\*/g, ''));
+      else if (rec?.requires_approval) result.queued.push(rec.action || text);
+      else result.skipped.push(text);
+    };
+
+    for (const rec of actions) {
+      tryOne(rec.expected_impact || rec.action, rec);
+      if (rec.action && rec.action !== rec.expected_impact) tryOne(rec.action, rec);
+    }
+    if (content) {
+      for (const line of extractActionLines(content)) tryOne(line);
+    }
+
+    if (s.autonomyEnabled || AUTO_EXECUTE_ACTIONS) {
+      const pending = s.approvals.filter((a) => {
+        if (a.status !== 'pending' && a.status !== 'estimating') return false;
+        if (taskId && a.task_id !== taskId) return false;
+        return a.risk_level === 'low';
+      });
+      for (const a of pending.slice(0, 8)) {
+        s.approveItem(a.id, 'Otomatik aksiyon uygulayıcı');
+        result.executed.push(`Onaylandı: ${a.action}`);
+      }
+    }
+
+    if (result.executed.length) {
+      pushToast({
+        kind: 'success',
+        title: `${result.executed.length} aksiyon uygulandı`,
+        body: result.executed.slice(0, 2).join(' · '),
+      });
+      s.addAuditLog({
+        action: 'actions.auto_executed',
+        actor_type: 'system',
+        actor_id: 'action_runner',
+        actor_name: 'Aksiyon Uygulayıcı',
+        details: result.executed.join('; '),
+      });
+    }
+
+    return result;
+  },
+
   executeSupervisorAction: (intent, params) => {
     const s = get();
     const audit = (details: string) =>
@@ -2116,6 +2253,9 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         const page = params?.page;
         if (!page) return null;
         s.setCurrentPage(page);
+        if (page === 'tic_orders' && params?.add === '1') {
+          s.setOrdersQuickAddOpen(true);
+        }
         audit(`Sayfa açıldı: ${page}`);
         return `✅ **${page}** sayfasına geçildi.`;
       }
@@ -2220,6 +2360,20 @@ export const useStore = create<AppState>()(persist((set, get) => ({
         audit(`${candidates.length} influencer'a ulaşmak istendi`);
         return `🎤 **Influencers** sayfasına geçildi — ${candidates.length} kişiyle henüz iletişime geçilmedi.`;
       }
+      case 'set_wallpaper': {
+        const rawId = params?.id || '';
+        if (!isWallpaperId(rawId)) return null;
+        const id = rawId;
+        useWallpaperStore.getState().setWallpaper(id);
+        const name = useWallpaperStore.getState().wallpaperName(id);
+        audit(`Duvar kağıdı ayarlandı: ${id}`);
+        return `🖼️ Duvar kağıdı **${name}** olarak ayarlandı. Arka planda hemen görünür. Değiştirmek için "duvar kağıtları" yazabilirsin.`;
+      }
+      case 'clear_wallpaper': {
+        useWallpaperStore.getState().setWallpaper(null);
+        audit('Duvar kağıdı kaldırıldı');
+        return '🖼️ Duvar kağıdı kaldırıldı.';
+      }
       case 'reset_all': {
         s.resetAll();
         return '♻️ Tüm sistem verileri sıfırlandı.';
@@ -2237,6 +2391,8 @@ export const useStore = create<AppState>()(persist((set, get) => ({
   supervisorDockOpen: false,
   toggleSupervisorDock: () => set((s) => ({ supervisorDockOpen: !s.supervisorDockOpen })),
   setSupervisorDockOpen: (open) => set({ supervisorDockOpen: open }),
+  ordersQuickAddOpen: false,
+  setOrdersQuickAddOpen: (open) => set({ ordersQuickAddOpen: open }),
 
   // Debug mode
   debugMode: false,
@@ -2617,5 +2773,11 @@ _persistImpl = ({ title, description, priority, startedAt, response }: PersistAr
 
   void useStore.getState().refreshAllModules();
 
-  return { taskId, approvalCount: newApprovals.length };
+  const actionRun = useStore.getState().runRecommendedActions(
+    recommended,
+    response.content,
+    taskId,
+  );
+
+  return { taskId, approvalCount: newApprovals.length, actionRun };
 };

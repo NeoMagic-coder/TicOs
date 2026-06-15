@@ -18,11 +18,35 @@ from sqlalchemy import func, select
 
 from apps.api.core.db import session_scope
 from apps.api.core.db.tic_models import TicCustomerRow, TicOrderItemRow, TicOrderRow, TicProductRow, TicTenantRow
-from apps.api.models.tic_schemas import TicOrder, TicOrderIn, TicOrderItem, TicOrderStatusUpdate
+from apps.api.models.tic_schemas import TicOrder, TicOrderIn, TicOrderItem, TicOrderStatusUpdate, TicSimpleOrderIn
 
 router = APIRouter(prefix="/tic/orders", tags=["tic"])
 
 _DEFAULT_TENANT_ID = "tenant_default"
+
+
+def _ensure_tenant() -> str:
+    with session_scope() as s:
+        row = s.get(TicTenantRow, _DEFAULT_TENANT_ID)
+        if row is None:
+            row = TicTenantRow(
+                id=_DEFAULT_TENANT_ID,
+                name="Default Company",
+                slug="default",
+                plan="PRO",
+            )
+            s.add(row)
+            s.flush()
+        return row.id
+
+
+def _split_customer_name(full_name: str) -> tuple[str, str]:
+    parts = full_name.strip().split(maxsplit=1)
+    if not parts:
+        return "Müşteri", "-"
+    if len(parts) == 1:
+        return parts[0], "-"
+    return parts[0], parts[1]
 
 
 def _generate_order_number() -> str:
@@ -114,8 +138,109 @@ async def list_orders(
         }
 
 
+@router.get("/stats", response_model=dict[str, Any])
+async def order_stats() -> dict[str, Any]:
+    _ensure_tenant()
+    with session_scope() as s:
+        base = select(TicOrderRow).where(TicOrderRow.tenant_id == _DEFAULT_TENANT_ID)
+        total = s.execute(select(func.count()).select_from(base.subquery())).scalar() or 0
+        pending = (
+            s.execute(
+                select(func.count()).select_from(
+                    base.where(TicOrderRow.status == "PENDING").subquery()
+                )
+            ).scalar()
+            or 0
+        )
+        revenue = (
+            s.execute(select(func.coalesce(func.sum(TicOrderRow.total_amount), 0)).where(TicOrderRow.tenant_id == _DEFAULT_TENANT_ID)).scalar()
+            or 0
+        )
+        return {
+            "total_orders": total,
+            "pending_orders": pending,
+            "total_revenue": round(float(revenue), 2),
+        }
+
+
+@router.post("/quick", response_model=TicOrder, status_code=201)
+async def create_simple_order(body: TicSimpleOrderIn) -> TicOrder:
+    """Manuel sipariş — müşteri otomatik oluşturulur, tek ürün satırı."""
+    _ensure_tenant()
+    with session_scope() as s:
+        first_name, last_name = _split_customer_name(body.customer_name)
+
+        product: TicProductRow | None = None
+        if body.product_id:
+            product = s.get(TicProductRow, body.product_id)
+            if product is None or product.tenant_id != _DEFAULT_TENANT_ID:
+                raise HTTPException(status_code=404, detail="Product not found")
+        else:
+            product = (
+                s.execute(
+                    select(TicProductRow)
+                    .where(TicProductRow.tenant_id == _DEFAULT_TENANT_ID)
+                    .where(TicProductRow.is_active.is_(True))
+                    .order_by(TicProductRow.created_at.desc())
+                    .limit(1)
+                )
+                .scalars()
+                .first()
+            )
+        if product is None:
+            raise HTTPException(status_code=400, detail="Önce en az bir ürün ekleyin.")
+
+        unit_price = body.unit_price if body.unit_price is not None else float(product.price)
+        if unit_price <= 0:
+            raise HTTPException(status_code=400, detail="Geçerli bir fiyat girin.")
+
+        customer = TicCustomerRow(
+            id=f"tic_c_{uuid.uuid4().hex[:12]}",
+            tenant_id=_DEFAULT_TENANT_ID,
+            first_name=first_name,
+            last_name=last_name,
+            phone=body.phone,
+            notes=body.notes,
+        )
+        s.add(customer)
+        s.flush()
+
+        line_total = round(body.quantity * unit_price, 2)
+        order = TicOrderRow(
+            id=f"tic_o_{uuid.uuid4().hex[:12]}",
+            tenant_id=_DEFAULT_TENANT_ID,
+            order_number=_generate_order_number(),
+            platform=body.platform,
+            status="PENDING",
+            customer_id=customer.id,
+            total_amount=line_total,
+            payment_method="MANUAL",
+            notes=body.notes,
+        )
+        s.add(order)
+        s.flush()
+
+        s.add(
+            TicOrderItemRow(
+                id=f"tic_oi_{uuid.uuid4().hex[:12]}",
+                order_id=order.id,
+                product_id=product.id,
+                quantity=body.quantity,
+                unit_price=unit_price,
+                total_price=line_total,
+            )
+        )
+        s.flush()
+        s.refresh(order)
+        result = _row_to_order(order)
+        if not result.customer_name.strip():
+            result = result.model_copy(update={"customer_name": f"{first_name} {last_name}".strip()})
+        return result
+
+
 @router.post("", response_model=TicOrder, status_code=201)
 async def create_order(body: TicOrderIn) -> TicOrder:
+    _ensure_tenant()
     with session_scope() as s:
         customer = s.get(TicCustomerRow, body.customer_id)
         if customer is None:
@@ -190,26 +315,3 @@ async def update_order_status(order_id: str, body: TicOrderStatusUpdate) -> TicO
         s.flush()
         return _row_to_order(row)
 
-
-@router.get("/stats", response_model=dict[str, Any])
-async def order_stats() -> dict[str, Any]:
-    with session_scope() as s:
-        base = select(TicOrderRow).where(TicOrderRow.tenant_id == _DEFAULT_TENANT_ID)
-        total = s.execute(select(func.count()).select_from(base.subquery())).scalar() or 0
-        pending = (
-            s.execute(
-                select(func.count()).select_from(
-                    base.where(TicOrderRow.status == "PENDING").subquery()
-                )
-            ).scalar()
-            or 0
-        )
-        revenue = (
-            s.execute(select(func.coalesce(func.sum(TicOrderRow.total_amount), 0)).where(TicOrderRow.tenant_id == _DEFAULT_TENANT_ID)).scalar()
-            or 0
-        )
-        return {
-            "total_orders": total,
-            "pending_orders": pending,
-            "total_revenue": round(float(revenue), 2),
-        }

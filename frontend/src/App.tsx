@@ -3,8 +3,9 @@
 // AGENT.OS — Main App entry (store-integrated)
 // ============================================================
 import React, { useState, useEffect, useRef } from 'react';
-import { Menubar, ProcessStrip, CmdPalette } from '@/components/AOS/shell';
+import { Menubar, ProcessStrip } from '@/components/AOS/shell';
 import DashboardPage from '@/pages/DashboardPage';
+import SimpleHomePage from '@/pages/SimpleHomePage';
 import SupervisorPage from '@/pages/ChatPage';
 import GraphPage from '@/pages/GraphPage';
 import OfficePage from '@/pages/AgentsPage';
@@ -23,18 +24,24 @@ import AutonomyConsolePage from '@/pages/AutonomyConsolePage';
 import TicProductsPage from '@/pages/TicProductsPage';
 import TicOrdersPage from '@/pages/TicOrdersPage';
 import ShoppingAgentPage from '@/pages/ShoppingAgentPage';
+import CommerceControlPage from '@/pages/CommerceControlPage';
+import WallpapersPage from '@/pages/WallpapersPage';
 import { IntegrationsPage } from '@/pages/legacy/IntegrationsPage';
 import { ToastStack } from '@/components/AOS/Toast';
 import { SupervisorChatDock } from '@/components/SupervisorChatDock';
-import VoiceDock from '@/components/VoiceDock';
 import { useAdaptedAgents, useStorePage, useOnboardingGate } from '@/lib/aos/adapter';
 import { OnboardingPage as RealOnboardingPage } from '@/pages/OnboardingPage';
 import UnifiedConsolePage from '@/pages/UnifiedConsolePage';
 import { isHubPage } from '@/lib/navigation/hubs';
+import { WallpaperBackground } from '@/components/wallpapers/WallpaperBackground';
+import EasyFeaturesPage from '@/pages/easy/EasyFeaturesPage';
+import { EASY_MODE } from '@/lib/easyMode';
 import { useStore } from '@/stores/useStore';
+import { GuideAssistant } from '@/components/guide/GuideAssistant';
 
 const PAGES: Record<string, any> = {
-  dashboard:  DashboardPage,
+  dashboard:  EASY_MODE ? EasyFeaturesPage : SimpleHomePage,
+  dashboard_full: DashboardPage,
   supervisor: SupervisorPage,
   chat:       SupervisorPage,
   graph:      GraphPage,
@@ -54,10 +61,13 @@ const PAGES: Record<string, any> = {
   autonomy_console: AutonomyConsolePage,
   tasks:      WorkQueuePage,
   integrations: IntegrationsPage,
+  easy_features: EasyFeaturesPage,
   onboarding: RealOnboardingPage,
   tic_products: TicProductsPage,
   tic_orders: TicOrdersPage,
   shopping: ShoppingAgentPage,
+  commerce_control: CommerceControlPage,
+  wallpapers: WallpapersPage,
   console: DashboardPage,
 };
 
@@ -88,7 +98,7 @@ const App = () => {
   // All store reads MUST happen unconditionally before any early return
   // (Rules of Hooks). The onboarding gate is enforced after these reads.
   const auditLogs = useStore((s: any) => s.auditLogs);
-  const [cmdOpen, setCmdOpen] = useState(false);
+  const isThinking = useStore((s: any) => s.isThinking);
   const [clock, setClock] = useState(() => new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }));
 
   useEffect(() => {
@@ -144,7 +154,7 @@ const App = () => {
   // mount and overwrites a deep link like /autonomy.
   const URL_TO_PAGE: Record<string, string> = {
     '': 'dashboard',
-    'dashboard': 'dashboard', 'chat': 'chat', 'supervisor': 'supervisor',
+    'dashboard': 'dashboard', 'dashboard_full': 'dashboard_full', 'dashboard-full': 'dashboard_full', 'chat': 'chat', 'supervisor': 'supervisor',
     'graph': 'graph', 'office': 'office', 'agents': 'agents',
     'approvals': 'approvals', 'tools': 'tools', 'audit': 'audit',
     'brand': 'brand', 'pricing': 'pricing', 'growth': 'growth',
@@ -158,7 +168,10 @@ const App = () => {
     'tic_products': 'tic_products', 'tic-products': 'tic_products',
     'tic_orders': 'tic_orders', 'tic-orders': 'tic_orders',
     'shopping': 'shopping', 'alisveris': 'shopping',
+    'commerce_control': 'commerce_control', 'commerce-control': 'commerce_control',
+    'wallpapers': 'wallpapers',
     'console': 'console',
+    'easy_features': 'dashboard', 'easy-features': 'dashboard', 'tum-ozellikler': 'dashboard',
   };
   const PAGE_TO_SLUG: Record<string, string> = { autonomy_console: 'autonomy' };
   const slugForPage = (p: string) => PAGE_TO_SLUG[p] || p;
@@ -216,17 +229,21 @@ const App = () => {
   })();
   const budgetBurn = '$' + lastHourCost.toFixed(2) + '/h';
 
+  const showProcStrip = !EASY_MODE && (runningCount > 0 || busyCount > 0 || isThinking);
+
   const Page = PAGES[route];
   const useUnifiedShell = Page && isHubPage(route);
 
   return (
-    <div className="app-root">
+    <div className={`app-root ${showProcStrip ? '' : 'app-root--compact'} ${EASY_MODE ? 'app-root--easy app-root--no-menubar' : ''}`.trim()}>
+      <WallpaperBackground />
+      {!EASY_MODE && (
       <Menubar
         sysClock={clock}
         runningCount={runningCount}
         busyCount={busyCount}
-        onCmd={() => setCmdOpen(true)}
       />
+      )}
       <div className="app-frame">
         <main className="main" key={route}>
           {useUnifiedShell ? (
@@ -238,10 +255,9 @@ const App = () => {
           )}
         </main>
       </div>
-      <ProcessStrip agents={adaptedAgents} budgetBurn={budgetBurn} />
-      <CmdPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onNavigate={setRoute} />
-      <SupervisorChatDock />
-      <VoiceDock />
+      {!EASY_MODE && <ProcessStrip agents={adaptedAgents} budgetBurn={budgetBurn} />}
+      {!EASY_MODE && <SupervisorChatDock />}
+      {EASY_MODE && !showOnboarding && <GuideAssistant />}
       <ToastStack />
     </div>
   );

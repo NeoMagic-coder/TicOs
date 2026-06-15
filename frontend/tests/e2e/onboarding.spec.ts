@@ -1,36 +1,21 @@
 import { test, expect } from '@playwright/test';
 
-/**
- * Onboarding smoke tests.
- *
- * Asserts the onboarding screen renders and the wizard advances step-by-step.
- * No backend calls are made from step 1 → 4, so no route stubbing is needed
- * for these checks. The full happy-path (with chat) lives in
- * onboarding-chat-flow.spec.ts.
- */
-test.describe('Onboarding smoke', () => {
-  test('renders step 1 with product name + category fields', async ({ page }) => {
+test.describe('Hızlı onboarding', () => {
+  test('renders product name field and Devam button', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByTestId('ticosclaw-brand')).toContainText('TICOSCLAW');
-    await expect(page.getByRole('heading', { name: 'Define product.' })).toBeVisible();
-
-    const next = page.getByRole('button', { name: 'continue' });
-    await expect(next).toBeVisible();
-    await expect(next).toBeDisabled();
+    await expect(page.getByTestId('ticosclaw-brand')).toContainText('TicOSClaw');
+    await expect(page.getByRole('heading', { name: 'Hoş geldin' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Devam' })).toBeDisabled();
   });
 
-  test('advances to step 2 once product name + category are filled', async ({ page }) => {
+  test('starts app when product name is filled', async ({ page }) => {
     await page.goto('/');
-
-    await page.getByPlaceholder(/Granit Yanmaz Tencere/i).fill('Yanmaz Tencere');
-    await page.getByRole('button', { name: 'Ev & Mutfak' }).click();
-    await page.getByRole('button', { name: /PRODUCT Ürünüm var/ }).click();
-
-    const next = page.getByRole('button', { name: 'continue' });
-    await expect(next).toBeEnabled();
-    await next.click();
-
-    await expect(page.getByRole('heading', { name: 'Configure market.' })).toBeVisible();
+    await page.getByPlaceholder(/Tencere/i).fill('Test Ürün');
+    const start = page.getByRole('button', { name: 'Devam' });
+    await expect(start).toBeEnabled();
+    await start.click();
+    await expect(page.getByTestId('quick-onboarding')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('tab', { name: 'Tüm özellikler' })).toHaveAttribute('aria-selected', 'true');
   });
 
   test('renders without page-level errors on first load', async ({ page }) => {

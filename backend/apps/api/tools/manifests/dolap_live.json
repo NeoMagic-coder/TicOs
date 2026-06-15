@@ -1,0 +1,91 @@
+[
+  {
+    "tool_id": "dolap_get_products",
+    "name": "Dolap Ürünleri Listele",
+    "description": "Dolap dolabındaki aktif ilanları, fiyat ve görsel bilgisiyle getirir.",
+    "category": "store",
+    "provider": "dolap",
+    "auth_required": true,
+    "timeout_ms": 30000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nickname": {"type": "string", "description": "Dolap kullanıcı adı (boşsa DOLAP_USERNAME)"},
+        "max_pages": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20}
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "nickname": {"type": "string"},
+        "owner_id": {"type": "integer"},
+        "total": {"type": "integer"},
+        "products": {"type": "array"}
+      }
+    },
+    "allowed_agents": ["catalog_agent", "store_setup_agent", "supervisor", "operations_agent"],
+    "cost_estimate_usd": 0.0,
+    "mode": "live",
+    "tags": ["store", "dolap", "marketplace", "fashion", "tr", "products"]
+  },
+  {
+    "tool_id": "dolap_get_profile",
+    "name": "Dolap Profil Bilgisi",
+    "description": "Dolap satıcı profilini, takipçi sayılarını ve üye kimliğini getirir.",
+    "category": "store",
+    "provider": "dolap",
+    "auth_required": true,
+    "timeout_ms": 20000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "nickname": {"type": "string"}
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "nickname": {"type": "string"},
+        "member_id": {"type": "integer"},
+        "follower_count": {"type": "integer"},
+        "followee_count": {"type": "integer"}
+      }
+    },
+    "allowed_agents": ["store_setup_agent", "supervisor"],
+    "cost_estimate_usd": 0.0,
+    "mode": "live",
+    "tags": ["store", "dolap", "marketplace", "tr"]
+  },
+  {
+    "tool_id": "dolap_listing_close",
+    "name": "Dolap İlan Kapat",
+    "description": "Dolap'ta yayında olan bir ilanı kapatır / satıldı işaretler.",
+    "category": "store",
+    "provider": "dolap",
+    "auth_required": true,
+    "timeout_ms": 20000,
+    "requires_approval": true,
+    "risk_level": "medium",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "product_id": {"type": ["string", "integer"], "description": "Dolap ürün/ilan ID"}
+      },
+      "required": ["product_id"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "product_id": {"type": "string"},
+        "status": {"type": "string"},
+        "ok": {"type": "boolean"}
+      }
+    },
+    "allowed_agents": ["catalog_agent", "supervisor", "operations_agent"],
+    "cost_estimate_usd": 0.0,
+    "mode": "live",
+    "tags": ["store", "dolap", "marketplace", "fashion", "tr"]
+  }
+]

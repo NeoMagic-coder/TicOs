@@ -6,6 +6,8 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Icon } from '@/components/AOS/widgets';
 import { BASE_URL, backendHeaders } from '@/lib/api';
 import { useStore } from '@/stores/useStore';
+import { EASY_MODE } from '@/lib/easyMode';
+import { EasyPageShell } from '@/components/easy/EasyPageShell';
 
 const fmtCurrency = (n: number) =>
   new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n);
@@ -155,6 +157,46 @@ const TicProductsPage = ({ navigate }: { navigate?: (page: string) => void }) =>
       setSaving(false);
     }
   };
+
+  if (EASY_MODE) {
+    const back = () => navigate?.('dashboard');
+    return (
+      <EasyPageShell title="Ürünler" subtitle="Stokta ne kaldığını buradan görün." onBack={back}>
+        {!linkedSku && activeProduct && (
+          <button type="button" className="easy-btn easy-btn--primary easy-btn--block" onClick={() => void handleSync()}>
+            Mağazayı envantere bağla
+          </button>
+        )}
+        <input
+          className="easy-input"
+          placeholder="Ara…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {loading ? (
+          <p className="easy-empty">Yükleniyor…</p>
+        ) : loadError ? (
+          <p className="easy-empty easy-empty--err">{loadError}</p>
+        ) : sortedProducts.length === 0 ? (
+          <p className="easy-empty">Henüz ürün yok.</p>
+        ) : (
+          <ul className="easy-card-list">
+            {sortedProducts.map((p: any) => (
+              <li key={p.id} className="easy-product-card">
+                <p className="easy-product-card__name">{p.name}</p>
+                <div className="easy-product-card__nums">
+                  <span>
+                    Stok: <strong style={{ color: p.stock <= 5 ? 'var(--rose)' : 'var(--fg-1)' }}>{p.stock}</strong>
+                  </span>
+                  <span>{fmtCurrency(p.price)}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </EasyPageShell>
+    );
+  }
 
   return (
     <div className="page">

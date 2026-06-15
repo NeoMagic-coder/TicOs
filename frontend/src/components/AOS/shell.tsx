@@ -6,8 +6,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Icon, StatusDot, AgentAvatar } from '@/components/AOS/widgets';
 import { useStore } from '@/stores/useStore';
 import { HUB_SECTIONS } from '@/lib/navigation/hubs';
+import { EASY_MODE } from '@/lib/easyMode';
 
-const Menubar = ({ sysClock, runningCount, busyCount, onCmd }) => {
+const Menubar = ({ sysClock, runningCount, busyCount }) => {
   const product = useStore((s: any) => s.onboardedProduct);
   const isThinking = useStore((s: any) => s.isThinking);
   const dashboard = useStore((s: any) => s.dashboard);
@@ -16,8 +17,7 @@ const Menubar = ({ sysClock, runningCount, busyCount, onCmd }) => {
   const products = useStore((s: any) => s.products);
   const switchToProduct = useStore((s: any) => s.switchToProduct);
   const setCurrentPage = useStore((s: any) => s.setCurrentPage);
-  const setOnboardingStep = useStore((s: any) => s.setOnboardingStep);
-  const resetOnboardingDraft = useStore((s: any) => s.resetOnboardingDraft);
+  const startNewProductOnboarding = useStore((s: any) => s.startNewProductOnboarding);
   const productName = product?.product_name || 'Ürün yok';
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherRef = useRef<HTMLDivElement>(null);
@@ -39,12 +39,17 @@ const Menubar = ({ sysClock, runningCount, busyCount, onCmd }) => {
     return { label: '…', dot: 'var(--fg-4)', title: 'Backend durumu kontrol ediliyor' };
   })();
   return (
-    <div className="menubar">
+    <div className={`menubar ${EASY_MODE ? 'menubar--easy' : ''}`}>
       <div className="menubar__brand">
         <img className="menubar__brand-mark" src="/ticosclaw-icon.png" alt="" aria-hidden="true" />
         <span>TicOSClaw</span>
       </div>
       <div className="menubar__items">
+        {EASY_MODE ? (
+          <div className="menubar__item menubar__item--easy-name">
+            <span className="menubar__item-value">{productName}</span>
+          </div>
+        ) : (
         <div className="menubar__item" ref={switcherRef} style={{ position: 'relative' }}>
           <button
             type="button"
@@ -102,11 +107,8 @@ const Menubar = ({ sysClock, runningCount, busyCount, onCmd }) => {
                 role="option"
                 type="button"
                 onClick={() => {
-                  // Clear any leftover wizard state — fixes pre-fill leak (#19).
-                  resetOnboardingDraft?.();
+                  startNewProductOnboarding?.();
                   setSwitcherOpen(false);
-                  setOnboardingStep?.(1);
-                  setCurrentPage('onboarding');
                 }}
                 style={{
                   display: 'block', width: '100%', background: 'transparent', border: 'none',
@@ -120,40 +122,24 @@ const Menubar = ({ sysClock, runningCount, busyCount, onCmd }) => {
             </div>
           )}
         </div>
+        )}
         {isThinking && (
           <div className="menubar__item menubar__item--thinking">
             <span className="menubar__status-dot menubar__status-dot--violet" />
-            <span className="menubar__item-value">İşleniyor</span>
+            <span className="menubar__item-value">Yanıt yazılıyor…</span>
           </div>
         )}
-        <AutonomyMenubarPill />
-        <LlmDegradedPill />
+        {!EASY_MODE && <LlmDegradedPill />}
       </div>
       <div className="menubar__spacer" />
+      {!EASY_MODE && (
       <div className="menubar__right">
-        <button
-          type="button"
-          aria-label="Komut paletini aç"
-          title="Komut paletini aç (Ctrl/⌘+K)"
-          onClick={onCmd}
-          className="menubar__item menubar__cmd-btn"
-        >
-          <Icon name="search" size={12} color="var(--fg-3)" />
-          <span className="btn__kbd">⌘K</span>
-        </button>
         <div className="menubar__item" title={backend.title}>
           <span className="menubar__status-dot" style={{ background: backend.dot }} />
           <span className="menubar__item-value">{backend.label}</span>
         </div>
-        {(runningCount > 0 || busyCount > 0) && (
-          <div className="menubar__item menubar__item--md-hide" title={`${runningCount} çalışıyor · ${busyCount} meşgul`}>
-            <span className="menubar__item-value tnum">{runningCount + busyCount} ajan</span>
-          </div>
-        )}
-        <div className="menubar__item menubar__item--lg-hide menubar__item--sm-hide" title={`Saat: ${sysClock}`}>
-          <span className="menubar__item-value tnum">{sysClock}</span>
-        </div>
       </div>
+      )}
     </div>
   );
 };
@@ -445,14 +431,7 @@ const ProcessStrip = ({ agents, budgetBurn }: { agents: any[]; budgetBurn?: stri
   ).slice(0, 6);
 
   if (!active.length && !isThinking) {
-    return (
-      <div className="procstrip procstrip--idle">
-        <span className="procstrip__hint">Hazır</span>
-        {budgetBurn && budgetBurn !== '$0.00/h' && (
-          <span className="procstrip__meta tnum">{budgetBurn}</span>
-        )}
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -489,11 +468,12 @@ const CMD_ITEMS = [
     { id: 'campaign',    title: 'Yeni Meta kampanyası taslağı',           hint: 'Marketing → Content & SEO' },
   ]},
   { group: 'Navigasyon', items: [
-    { id: 'go-dash',     title: 'Dashboard\'a git',                       hint: '⌘1' },
-    { id: 'go-graph',    title: 'Görev Grafiği\'ne git',                  hint: '⌘2' },
-    { id: 'go-office',   title: 'Agent Office\'e git',                    hint: '⌘3' },
-    { id: 'go-tasks',    title: 'Görevler & Onaylar\'a git',              hint: '⌘4' },
-    { id: 'go-tools',    title: 'Araçlar\'a git',                         hint: '⌘5' },
+    { id: 'go-dash',     title: 'Ana Sayfa',              hint: 'Özet' },
+    { id: 'go-supervisor', title: 'Sohbet',               hint: 'AI asistan' },
+    { id: 'go-tic_products', title: 'Stok',               hint: 'Mağaza' },
+    { id: 'go-tic_orders', title: 'Siparişler',           hint: 'Mağaza' },
+    { id: 'go-approvals', title: 'Görevler',              hint: 'Operasyon' },
+    { id: 'go-office',   title: 'Ajanlar',                hint: 'Operasyon' },
   ]},
 ];
 
@@ -533,7 +513,7 @@ const CmdPalette = ({ open, onClose, onNavigate }) => {
 
   const handleSelect = (it) => {
     if (it.id.startsWith('go-')) {
-      const target = it.id.replace('go-', '').replace('dash', 'dashboard');
+      const target = it.id.replace('go-', '').replace('dash', 'dashboard').replace('supervisor', 'supervisor');
       onNavigate(target);
     } else if (it.id === 'sweep') {
       void useStore.getState().runAutonomySweep();

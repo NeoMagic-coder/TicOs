@@ -67,6 +67,17 @@ class TicOrderIn(BaseModel):
     notes: str = ""
 
 
+class TicSimpleOrderIn(BaseModel):
+    """Tek ekrandan manuel sipariş — müşteri + ürün birlikte."""
+    customer_name: str = Field(..., min_length=2, max_length=200)
+    phone: str = ""
+    product_id: str = ""
+    quantity: int = Field(1, ge=1)
+    unit_price: float | None = Field(None, gt=0)
+    notes: str = ""
+    platform: Literal["TRENDYOL", "HEPSIBURADA", "AMAZON", "MANUAL"] = "MANUAL"
+
+
 class TicOrderItem(TicOrderItemIn):
     id: str
     order_id: str

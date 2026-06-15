@@ -1,6 +1,7 @@
 import { useStore } from '@/stores/useStore';
-import { Bot, User, MessageSquare, X, Sparkles, Zap, Minimize2, History, Send } from 'lucide-react';
+import { Bot, User, MessageSquare, X, Sparkles, Zap, Minimize2, Send } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { VoiceMicButton } from './VoiceDock';
 import { ChatMessageBody } from './ChatMessageBody';
 import { getPageDef } from '@/lib/navigation/hubs';
 
@@ -123,7 +124,7 @@ function quickPromptsFor(page: string, productName?: string): string[] {
       'Rakip analizi yap',
     ],
   };
-  return (map[page] ?? map.dashboard).slice(0, 4);
+  return (map[page] ?? map.dashboard).slice(0, 2);
 }
 
 /** Floating Supervisor chat dock — pinned to every page via Layout. */
@@ -188,20 +189,19 @@ export function SupervisorChatDock() {
 
   if (!supervisorDockOpen) {
     return (
-      <button
-        type="button"
-        onClick={() => setSupervisorDockOpen(true)}
-        className="supervisor-dock-fab"
-        title="Supervisor (Ctrl+K)"
-        aria-label="Supervisor dock'u aç"
-      >
-        <span className="supervisor-dock-fab__icon">
-          <span className="supervisor-dock-fab__pulse" aria-hidden="true" />
-          <Sparkles size={15} />
-        </span>
-        <span className="supervisor-dock-fab__label">Supervisor</span>
-        <kbd className="supervisor-dock-fab__kbd">⌘K</kbd>
-      </button>
+      <div className="assistant-bar" role="group" aria-label="Asistan">
+        <VoiceMicButton />
+        <button
+          type="button"
+          onClick={() => setSupervisorDockOpen(true)}
+          className="assistant-bar__chat"
+          title="Sohbet (Ctrl+K)"
+          aria-label="Sohbeti aç"
+        >
+          <Sparkles size={18} />
+          <span className="assistant-bar__chat-label">Sohbet</span>
+        </button>
+      </div>
     );
   }
 
@@ -218,8 +218,7 @@ export function SupervisorChatDock() {
           </div>
           <div className="supervisor-dock__meta">
             <div className="supervisor-dock__title-row">
-              <span className="supervisor-dock__title">Supervisor</span>
-              <span className="tab__pill tab__pill--live mono">LIVE</span>
+              <span className="supervisor-dock__title">Sohbet</span>
             </div>
             <div className="supervisor-dock__subtitle" title={contextLine}>
               {contextLine || 'Komut paleti'}
@@ -227,6 +226,7 @@ export function SupervisorChatDock() {
           </div>
         </div>
         <div className="supervisor-dock__controls">
+          <VoiceMicButton className="supervisor-dock__ctrl-mic" />
           <button
             type="button"
             onClick={() => setMinimized((m) => !m)}
@@ -256,7 +256,7 @@ export function SupervisorChatDock() {
                 <div className="supervisor-dock__empty-icon">
                   <MessageSquare size={18} />
                 </div>
-                <p>Doğal dilde komut ver — Supervisor tüm modülleri yönetebilir.</p>
+                <p>Komut veya soru yaz — tüm modülleri yönetebilirsin.</p>
               </div>
             )}
 
@@ -329,29 +329,7 @@ export function SupervisorChatDock() {
 
           {(recentCommands.length > 0 || prompts.length > 0) && (
             <div className="supervisor-dock__chips">
-              {recentCommands.length > 0 && (
-                <>
-                  <div className="supervisor-dock__chips-label">
-                    <History size={10} />
-                    Son komutlar
-                  </div>
-                  <div className="supervisor-dock__chip-scroll">
-                    {recentCommands.slice(0, 4).map((cmd) => (
-                      <button
-                        key={cmd}
-                        type="button"
-                        onClick={() => sendUserMessage(cmd)}
-                        disabled={isThinking}
-                        className="supervisor-dock__chip supervisor-dock__chip--recent"
-                        title={cmd}
-                      >
-                        {cmd}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-              <div className="supervisor-dock__chips-label">Hızlı komutlar</div>
+              <div className="supervisor-dock__chips-label">Öneriler</div>
               <div className="supervisor-dock__chip-scroll">
                 {prompts.map((p) => (
                   <button
@@ -378,7 +356,7 @@ export function SupervisorChatDock() {
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 disabled={isThinking}
                 placeholder={
-                  isThinking ? 'Supervisor yanıt veriyor…' : 'Komut veya soru…'
+                  isThinking ? 'Yanıt yazılıyor…' : 'Mesaj yaz…'
                 }
                 className="supervisor-dock__input"
                 aria-label="Supervisor mesajı"

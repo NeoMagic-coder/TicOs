@@ -29,6 +29,22 @@ GEMINI_MODEL=gemini-2.5-flash
 - "API key not valid" + `.env.local` doğruysa: stale sistem env gölgeleyebilir (`GEMINI_API_KEY` temizle, backend'i yeniden başlat).
 - Üretim: `API_KEY` reverse proxy'de; tarayıcı bundle'ında değil.
 
+## Dolap (mobil API köprüsü — resmi değil)
+
+```env
+DOLAP_USERNAME=eposta_veya_nick
+DOLAP_PASSWORD=******
+DOLAP_NICKNAME=turkmens6692
+DOLAP_CATEGORY_GROUP=WOMAN
+# İsteğe bağlı — dolap_flask accessToken:
+# DOLAP_ACCESS_TOKEN=...
+# Login 403/405 alırsanız:
+# DOLAP_SIGNATURE=...
+```
+
+- Bağlantı kontrolü: `GET /api/v1/dolap/status`
+- Ürünler: `GET /api/v1/dolap/products`
+
 ## İlgili
 
 - [[LLM Provider Layer]], [[Komutlar & Dev Akışı]], [[Frontend API Katmanı]].

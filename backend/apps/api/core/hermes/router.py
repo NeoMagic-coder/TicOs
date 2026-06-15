@@ -51,6 +51,7 @@ _KEYWORDS = {
     "logistics_agent": ["lojistik", "kargo karşılaştır", "rota", "taşıyıcı", "gönderi takip", "carrier"],
     "dynamic_pricing_agent": ["dinamik fiyat", "fiyat ayarla", "anlık fiyat", "esneklik", "talep sinyali"],
     "autonomous_decision_agent": ["otonom karar", "otomatik onay", "karar politikası", "policy", "otonomi"],
+    "fraud_agent": ["dolandırıcılık", "fraud", "şüpheli sipariş", "risk skoru", "chargeback", "sahte sipariş"],
 }
 
 _URGENCY_HINTS = {

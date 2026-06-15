@@ -12,8 +12,10 @@ from apps.api.core.logging import get_logger
 from apps.api.tools.live import (
     agent_handoff,
     collectapi,
+    commerce_control,
     competitor_scan,
     compute_tools,
+    dolap,
     fakestore,
     ga4,
     google_ads,
@@ -37,9 +39,11 @@ def register_all() -> None:
     for mod in (
         shopify,
         trendyol,
+        dolap,
         ga4,
         fakestore,
         collectapi,
+        commerce_control,
         competitor_scan,
         meta_ads,
         google_ads,

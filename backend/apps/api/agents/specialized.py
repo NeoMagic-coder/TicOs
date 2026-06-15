@@ -304,6 +304,21 @@ class DynamicPricingAgent(BaseAgent):
         )
 
 
+class FraudAgent(BaseAgent):
+    primary_tools = ["commerce_control_scan", "commerce_fraud_check", "commerce_action_propose", "tic_order_list"]
+
+    def system_prompt(self, ctx: dict[str, Any]) -> str:
+        return (
+            "Sen Fraud & Risk Agent'sın. Sipariş ve ödeme davranışını kural tabanlı skorlarsın. "
+            "Yüksek tutar, yeni müşteri, kapıda ödeme ve yüksek indirim gibi sinyalleri birleştirirsin. "
+            "Her kararda fraud_score + reasons listesi ver. Yanlış pozitif riskini açıkça belirt; "
+            "yüksek riskte hold_high_risk_order veya flag_order_review öner. "
+            "Asla 'kesin dolandırıcılık' deme — 'inceleme önerilir' yaklaşımını kullan."
+            + HANDOFF_HINT
+            + "\n\n" + _product_block(ctx)
+        )
+
+
 class AutonomousDecisionAgent(BaseAgent):
     primary_tools = ["autonomy_policy_check", "decision_log_writer", "agent_handoff"]
 
@@ -354,6 +369,7 @@ AGENT_CLASSES: dict[str, type[BaseAgent]] = {
     "logistics_agent": LogisticsAgent,
     "dynamic_pricing_agent": DynamicPricingAgent,
     "autonomous_decision_agent": AutonomousDecisionAgent,
+    "fraud_agent": FraudAgent,
 }
 
 

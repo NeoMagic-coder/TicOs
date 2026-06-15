@@ -1,38 +1,21 @@
 import { type Page, expect } from '@playwright/test';
 
 /**
- * Drive the 5-step onboarding wizard to completion and land on the dashboard.
- *
- * Used by specs that need an onboarded workspace as setup. All steps use
- * role/text locators (golden-rules.md #1).
+ * Hızlı onboarding — ürün adı + Devam.
  */
 export async function completeOnboarding(
   page: Page,
-  opts: { productName?: string; category?: string; channel?: string } = {},
+  opts: { productName?: string; stub?: boolean } = {},
 ): Promise<void> {
   const productName = opts.productName ?? 'Yanmaz Tencere';
-  const category = opts.category ?? 'Mutfak';
-  const channel = opts.channel ?? 'Shopify';
+  const stub = opts.stub ?? true;
+
+  if (stub) await stubBackend(page);
 
   await page.goto('/');
-  // Step 1
-  await page.getByPlaceholder(/Granit Yanmaz Tencere/i).fill(productName);
-  await page.getByPlaceholder(/Ev & Mutfak/i).fill(category);
-  await page.getByRole('button', { name: /Devam/i }).click();
-  // Step 2
-  await page.getByText('Ürünüm var, mağaza yok').click();
-  await page.getByRole('button', { name: /Devam/i }).click();
-  // Step 3
-  await page.getByRole('button', { name: /Türkiye/i }).click();
-  await page.getByRole('button', { name: channel, exact: true }).click();
-  await page.getByRole('button', { name: /5k-25k/i }).click();
-  await page.getByRole('button', { name: /Devam/i }).click();
-  // Step 4
-  await page.getByRole('button', { name: /Hızlı satış başlatmak/i }).click();
-  await page.getByRole('button', { name: /Devam/i }).click();
-  // Step 5
-  await expect(page.getByText('Hazırız!')).toBeVisible();
-  await page.getByRole('button', { name: /İlk Analizi Başlat/i }).click();
+  await page.getByPlaceholder(/Tencere/i).fill(productName);
+  await page.getByRole('button', { name: /^Devam$/ }).click();
+  await expect(page.getByTestId('quick-onboarding')).not.toBeVisible({ timeout: 15000 });
 }
 
 /** Stub the backend /api/v1/chat and /health endpoints so tests run offline. */
@@ -45,6 +28,12 @@ export async function stubBackend(page: Page, opts: { health?: 'ok' | 'offline' 
   } else {
     await page.route('**/health', (route) => route.abort('connectionrefused'));
   }
+  await page.route('**/api/v1/products**', (route) => {
+    if (route.request().method() === 'POST') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
   await page.route('**/api/v1/chat', (route) =>
     route.fulfill({
       status: 200,

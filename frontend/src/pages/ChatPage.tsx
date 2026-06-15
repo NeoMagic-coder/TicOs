@@ -8,6 +8,8 @@ import { Icon, StatusDot, AgentAvatar } from '@/components/AOS/widgets';
 import { AGENT_BY_ID, AGENTS } from '@/data/aos/mockData';
 import { useStore } from '@/stores/useStore';
 import { storeActions } from '@/lib/aos/adapter';
+import { EASY_MODE } from '@/lib/easyMode';
+import { EasyHelpModal } from '@/components/EasyHelpModal';
 
 // The previous version of this file shipped a 35-line pre-scripted SAMPLE
 // exchange ("Trendyol Mayıs ayında büyüt" with confident fake metrics like
@@ -195,6 +197,7 @@ const SupervisorPage = ({
   const setCurrentPage = useStore((s: any) => s.setCurrentPage);
   const addAuditLog = useStore((s: any) => s.addAuditLog);
   const [input, setInput] = useState('');
+  const [helpOpen, setHelpOpen] = useState(false);
   const [showNewTask, setShowNewTask] = useState(false);
   const [newTaskDraft, setNewTaskDraft] = useState({ title: '', description: '' });
   const scrollRef = useRef(null);
@@ -318,12 +321,23 @@ const SupervisorPage = ({
   };
 
   return (
-    <div className={`page supervisor-page ${embedded ? 'supervisor-page--embedded' : ''}`}>
+    <div className={`page supervisor-page ${embedded ? 'supervisor-page--embedded' : ''} ${embedded && EASY_MODE ? 'supervisor-page--easy' : ''}`}>
       {!embedded && (
         <div className="page__breadcrumb mono">HOME <span>›</span> SUPERVISOR</div>
       )}
       <div className="page__header" style={embedded ? { marginBottom: 0, paddingBottom: 0, borderBottom: 'none' } : { marginBottom: 12 }}>
         <div>
+          {embedded && EASY_MODE && (
+            <div className="easy-chat__head">
+              <div className="easy-chat__head-row">
+                <h2 className="easy-chat__title">Buraya yazın</h2>
+                <button type="button" className="easy-chat__help" onClick={() => setHelpOpen(true)} aria-label="Yardım">
+                  ?
+                </button>
+              </div>
+              <p className="easy-chat__sub">Sorunuzu yazın, Gönder&apos;e basın.</p>
+            </div>
+          )}
           {!embedded && (
             <>
               <h1 className="page__title">
@@ -366,6 +380,7 @@ const SupervisorPage = ({
             </>
           )}
         </div>
+        {!(embedded && EASY_MODE) && (
         <div className="supervisor-page__toolbar">
           {embedded && isThinking && (
             <span className="chip chip--violet">
@@ -380,30 +395,39 @@ const SupervisorPage = ({
             <Icon name="graph" size={12} /> Görev Grafiği
           </button>
         </div>
+        )}
       </div>
 
       <div ref={scrollRef} className="supervisor-page__feed">
         {exchanges.length === 0 && !isThinking && (
           <div className="supervisor-page__empty">
+            {!(EASY_MODE && embedded) && (
             <div className="supervisor-page__empty-icon">
               <Icon name="sparkles" size={24} color="var(--violet)" />
             </div>
+            )}
             <div>
-              <div className="supervisor-page__empty-title">Supervisor'a ne sormak istiyorsun?</div>
+              <div className="supervisor-page__empty-title">
+                {EASY_MODE && embedded ? 'Örnek:' : 'Supervisor\'a ne sormak istiyorsun?'}
+              </div>
+              {!(EASY_MODE && embedded) && (
               <div className="supervisor-page__empty-sub">
                 Doğal dilde komut yaz — TicOSClaw plan kurar, araçları çağırır ve sonucu Türkçe özetler.
               </div>
+              )}
             </div>
             <div className="supervisor-page__prompts">
-              {[
+              {(EASY_MODE && embedded
+                ? ['Stok var mı?', 'Yeni sipariş ekle']
+                : [
                 'Bugün için günün planını çıkar',
                 'Bekleyen tüm onayları onayla',
                 'Marka kimliğini yeniden üret',
                 'En kritik 3 görev hangisi?',
                 'Anomalileri göster',
                 'Tüm entegrasyonları senkronize et',
-              ].map((s) => (
-                <button key={s} className="btn btn--sm btn--ghost" onClick={() => send(s)}>
+              ]).map((s) => (
+                <button key={s} className={`btn btn--sm ${EASY_MODE && embedded ? 'btn--primary easy-chat__prompt' : 'btn--ghost'}`} onClick={() => send(s)}>
                   {s}
                 </button>
               ))}
@@ -459,7 +483,8 @@ const SupervisorPage = ({
         ))}
       </div>
 
-      <div className="supervisor-page__composer">
+      <div className={`supervisor-page__composer ${EASY_MODE && embedded ? 'supervisor-page__composer--easy' : ''}`}>
+        {!(EASY_MODE && embedded) && (
         <div className="supervisor-page__composer-meta">
           <span className="label-eyebrow" style={{ color: 'var(--violet)' }}>
             <span style={{ color: 'var(--acid)' }}>›</span> SUPERVISOR
@@ -475,20 +500,23 @@ const SupervisorPage = ({
             ))}
           </div>
         </div>
+        )}
         <textarea
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
-          placeholder="Supervisor'a mesaj — Görev yaz veya / ile slash komut çalıştır… (Enter gönder · Shift+Enter yeni satır)"
+          placeholder={EASY_MODE && embedded ? 'Örn: Bugün ne yapmalım?' : "Supervisor'a mesaj — Görev yaz veya / ile slash komut çalıştır… (Enter gönder · Shift+Enter yeni satır)"}
           className="supervisor-page__composer-input"
         />
         <div className="supervisor-page__composer-footer">
+          {!(EASY_MODE && embedded) && (
           <span className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>
             ⌘K dock · ⌘↵ gönder
           </span>
+          )}
           <span style={{ marginLeft: 'auto' }} />
-          <button className="btn btn--primary btn--sm" onClick={() => send(input)}>
-            <Icon name="zap" size={12} /> Gönder
+          <button className={`btn btn--primary ${EASY_MODE && embedded ? 'btn--lg easy-chat__send' : 'btn--sm'}`} onClick={() => send(input)}>
+            <Icon name="zap" size={EASY_MODE && embedded ? 16 : 12} /> Gönder
           </button>
         </div>
       </div>
@@ -524,6 +552,10 @@ const SupervisorPage = ({
             </div>
           </div>
         </div>
+      )}
+
+      {EASY_MODE && embedded && (
+        <EasyHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
       )}
     </div>
   );

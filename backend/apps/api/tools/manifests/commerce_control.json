@@ -1,0 +1,83 @@
+[
+  {
+    "tool_id": "commerce_control_scan",
+    "name": "Commerce Control: Full Scan",
+    "description": "Tüm e-ticaret modüllerini (ürün, stok, sipariş, ödeme, destek, dolandırıcılık) tarar ve birleşik sağlık raporu üretir.",
+    "category": "commerce",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "refresh": {"type": "boolean", "default": true}
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "overall_health": {"type": "number"},
+        "overall_status": {"type": "string"},
+        "modules": {"type": "array"}
+      }
+    },
+    "allowed_agents": ["fraud_agent", "operations_agent", "support_agent", "supervisor", "autonomous_decision_agent"],
+    "cost_estimate_usd": 0.002,
+    "mode": "live",
+    "tags": ["commerce", "control", "monitoring"]
+  },
+  {
+    "tool_id": "commerce_fraud_check",
+    "name": "Commerce Control: Fraud Check",
+    "description": "Aktif siparişlerde kural tabanlı dolandırıcılık skoru hesaplar. Yüksek skorlu siparişleri inceleme için işaretler.",
+    "category": "commerce",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "order_id": {"type": "string", "description": "Opsiyonel — tek sipariş kontrolü"}
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "flagged_count": {"type": "integer"},
+        "flagged_orders": {"type": "array"}
+      }
+    },
+    "allowed_agents": ["fraud_agent", "operations_agent", "autonomous_decision_agent"],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": ["commerce", "fraud", "risk"]
+  },
+  {
+    "tool_id": "commerce_action_propose",
+    "name": "Commerce Control: Propose Action",
+    "description": "E-ticaret aksiyonu önerir (stok, fraud, destek). Politika eşiğini aşarsa onay kuyruğuna yönlendirir.",
+    "category": "commerce",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action_type": {
+          "type": "string",
+          "enum": ["flag_order_review", "hold_high_risk_order", "suggest_restock", "escalate_support", "sync_inventory", "enrich_product_content"]
+        },
+        "module_id": {"type": "string"},
+        "params": {"type": "object"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.8},
+        "risk_level": {"type": "string", "enum": ["low", "medium", "high", "critical"]}
+      },
+      "required": ["action_type", "module_id"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "decision_status": {"type": "string"},
+        "approval_id": {"type": "string"}
+      }
+    },
+    "allowed_agents": ["fraud_agent", "operations_agent", "support_agent", "autonomous_decision_agent"],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": ["commerce", "action", "approval"]
+  }
+]

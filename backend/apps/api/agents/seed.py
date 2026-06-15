@@ -47,7 +47,7 @@ SEED_AGENTS: list[AgentSpec] = [
             "review_reputation_agent", "analytics_agent", "growth_agent",
             "legal_compliance_agent", "influencer_pr_agent",
             "negotiation_agent", "logistics_agent", "dynamic_pricing_agent",
-            "autonomous_decision_agent",
+            "autonomous_decision_agent", "fraud_agent",
         ],
         status=AgentStatus.active,
     ),
@@ -245,5 +245,14 @@ SEED_AGENTS: list[AgentSpec] = [
         personality="İlişki odaklı.", icon="🎙️", color="#fb7185",
         allowed_tools=["influencer_discovery", "influencer_outreach_writer", "press_release_writer"],
         allowed_tool_categories=["influencer"],
+    ),
+    _spec(
+        agent_id="fraud_agent", name="Fraud & Risk Agent",
+        role="Dolandırıcılık & Ödeme Riski",
+        goal="Sipariş ve ödeme davranışını skorla; yüksek riskli işlemleri incelemeye al.",
+        personality="Şüpheci ama adil; her kararda gerekçe sunar.", icon="🔒", color="#dc2626",
+        allowed_tools=["commerce_control_scan", "commerce_fraud_check", "commerce_action_propose", "tic_order_list"],
+        allowed_tool_categories=["commerce", "order"],
+        escalation_threshold=0.7,
     ),
 ]

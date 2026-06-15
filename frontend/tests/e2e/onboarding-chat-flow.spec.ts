@@ -1,11 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { completeOnboarding } from './helpers/onboard';
 
 /**
- * Full happy-path E2E: complete the 5-step onboarding wizard, navigate to
- * Chat, send a message, and assert the (stubbed) backend response renders.
- *
- * The backend is stubbed via page.route — we never hit a real FastAPI server.
- * This lets the test run in CI without standing up Python.
+ * Full happy-path E2E: hızlı onboarding, sohbet, stubbed backend yanıtı.
  */
 
 const STUB_RESPONSE = {
@@ -56,40 +53,13 @@ test('onboarding → chat → mocked backend response renders', async ({ page })
   );
 
   await page.goto('/');
+  await completeOnboarding(page, { productName: 'Yanmaz Tencere' });
 
-  // --- Step 1: product name + category ---
-  await expect(page.getByText('Ürününüz ne?')).toBeVisible();
-  await page.getByPlaceholder(/Granit Yanmaz Tencere/i).fill('Yanmaz Tencere');
-  await page.getByPlaceholder(/Ev & Mutfak/i).fill('Mutfak');
-  await page.getByRole('button', { name: /Devam/i }).click();
-
-  // --- Step 2: stage ---
-  await expect(page.getByText('Nereden başlamak istiyorsunuz?')).toBeVisible();
-  await page.getByText('Ürünüm var, mağaza yok').click();
-  await page.getByRole('button', { name: /Devam/i }).click();
-
-  // --- Step 3: target market, channel, budget ---
-  await expect(page.getByText('Hedef pazarınız ve bütçeniz?')).toBeVisible();
-  await page.getByRole('button', { name: /Türkiye/i }).click();
-  await page.getByRole('button', { name: 'Shopify', exact: true }).click();
-  await page.getByRole('button', { name: /5k-25k/i }).click();
-  await page.getByRole('button', { name: /Devam/i }).click();
-
-  // --- Step 4: priorities ---
-  await expect(page.getByText('Öncelikleriniz?')).toBeVisible();
-  await page.getByRole('button', { name: /Hızlı satış başlatmak/i }).click();
-  await page.getByRole('button', { name: /Devam/i }).click();
-
-  // --- Step 5: summary + start ---
-  await expect(page.getByText('Hazırız!')).toBeVisible();
-  await page.getByRole('button', { name: /İlk Analizi Başlat/i }).click();
-
-  // --- Dashboard renders, navigate to Chat ---
-  await page.getByRole('button', { name: /^Chat$/i }).click();
-  await expect(page.getByText('Supervisor Chat')).toBeVisible();
+  // --- Soru Sor sekmesine geç ---
+  await page.getByRole('tab', { name: 'Soru Sor' }).click();
 
   // --- Send a chat message that routes to market_research_agent ---
-  const input = page.getByPlaceholder(/Supervisor'a mesaj/i);
+  const input = page.getByPlaceholder(/Bugün ne yapmalım/i);
   await input.fill('Pazar araştırması yap ve rakipleri çıkar');
   await page.getByRole('button', { name: /Gönder/i }).click();
 

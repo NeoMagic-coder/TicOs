@@ -49,6 +49,20 @@ const Icon = ({ name, size = 16, color = 'currentColor', stroke = 1.6, style }) 
     user:       <><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/></>,
     sparkles:   <><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M19 14l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7L19 14z"/></>,
     flow:       <><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M6 9v3h12V9M12 12v3"/></>,
+    grid:       <><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></>,
+    package:    <><path d="M12 2l8 4.5v11L12 22l-8-4.5v-11L12 2z"/><path d="M12 22V12"/><path d="M20 6.5L12 12 4 6.5"/></>,
+    box:        <><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></>,
+    shield:     <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></>,
+    users:      <><circle cx="9" cy="7" r="3"/><circle cx="17" cy="11" r="3"/><path d="M3 21v-1a5 5 0 0 1 5-5h2"/><path d="M13 21v-1a4 4 0 0 1 4-4h0"/></>,
+    bot:        <><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M12 2v4"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></>,
+    org:        <><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4M7.5 17l3-6M16.5 17l-3-6"/></>,
+    target:     <><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></>,
+    wallet:     <><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></>,
+    wrench:     <><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6.6 6.6 2.7 2.7 6.6-6.6a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.7-2.7z"/></>,
+    terminal:   <><path d="M4 6h16M4 12h16M4 18h10"/></>,
+    link:       <><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></>,
+    trend:      <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></>,
+    more:       <><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></>,
   };
   return <svg {...props}>{paths[name] || null}</svg>;
 };

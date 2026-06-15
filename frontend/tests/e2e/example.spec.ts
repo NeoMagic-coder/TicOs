@@ -9,7 +9,7 @@ test.describe('Homepage', () => {
 
   test('should show onboarding entry screen', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByTestId('ticosclaw-brand')).toContainText('TICOSCLAW');
-    await expect(page.getByRole('heading', { name: 'Define product.' })).toBeVisible();
+    await expect(page.getByTestId('ticosclaw-brand')).toContainText('TicOSClaw');
+    await expect(page.getByRole('heading', { name: 'Hoş geldin' })).toBeVisible();
   });
 });

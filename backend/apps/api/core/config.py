@@ -140,6 +140,19 @@ class Settings(BaseSettings):
     # → adapter degrades to mock output with ``degraded: true``.
     collectapi_api_key: str = ""
 
+    # Dolap mobile API bridge (unofficial — dolap_flask pattern).
+    # Use DOLAP_ACCESS_TOKEN or DOLAP_USERNAME + DOLAP_PASSWORD.
+    dolap_username: str = ""
+    dolap_password: str = ""
+    dolap_access_token: str = ""
+    dolap_nickname: str = ""  # Dolap @nick — e-posta yerine profil için
+    dolap_signature: str = ""
+    dolap_app_version: str = "253"
+    dolap_app_platform: str = "ios"
+    dolap_category_group: str = "WOMAN"
+    dolap_user_agent: str = "dolap/2 CFNetwork/1325.0.1 Darwin/21.1.0"
+    dolap_member_cookie: str = "43654195-E337-4BEA-B35C-59ECF9B97F58"
+
     # Gemini grounding — external search API.
     # When ``grounding_external_api_endpoint`` is set the GeminiProvider will
     # attach ``Tool(retrieval=Retrieval(external_api=ExternalApi(...)))`` to

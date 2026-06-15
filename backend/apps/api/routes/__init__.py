@@ -13,8 +13,10 @@ from apps.api.routes import approvals
 from apps.api.routes import automations
 from apps.api.routes import brand
 from apps.api.routes import chat
+from apps.api.routes import commerce_control
 from apps.api.routes import dashboard
 from apps.api.routes import demo
+from apps.api.routes import dolap
 from apps.api.routes import goals
 from apps.api.routes import graph
 from apps.api.routes import grounding
@@ -59,6 +61,7 @@ API_ROUTERS = (
     grounding.router,
     products.router,
     workspace.router,
+    commerce_control.router,
     growth.router,
     policies.router,
     policies.autonomy_router,
@@ -66,6 +69,7 @@ API_ROUTERS = (
     demo.router,
     graph.router,
     integrations.router,
+    dolap.router,
     org.router,
     goals.router,
     llm.router,

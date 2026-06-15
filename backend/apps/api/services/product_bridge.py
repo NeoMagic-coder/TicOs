@@ -23,6 +23,16 @@ log = get_logger(__name__)
 _DEFAULT_TENANT_ID = "tenant_default"
 
 
+def _commerce_status() -> str:
+    try:
+        from apps.api.core.commerce.orchestrator import get_commerce_orchestrator
+
+        snap = get_commerce_orchestrator().get_snapshot()
+        return str(snap.get("overall_status", "unknown"))
+    except Exception:
+        return "unknown"
+
+
 def workspace_sku(product_name: str) -> str:
     slug = re.sub(r"[^A-Z0-9]+", "-", product_name.upper()).strip("-")[:40]
     return f"WS-{slug or 'PRODUCT'}"
@@ -219,6 +229,10 @@ def get_workspace_integration_status(product_name: str | None = None) -> dict[st
                 "link": inventory_link,
             },
             "ticosclaw": {"connected": True},
+            "commerce_control": {
+                "overall_status": _commerce_status(),
+                "module_count": 6,
+            },
         },
         "flows": _build_integration_flows(
             active_row=active_row,
@@ -255,38 +269,24 @@ def _build_integration_flows(
 
     return [
         node(
-            "system",
-            "Sistem",
+            "home",
+            "Ana Sayfa",
             "dashboard",
             has_product,
-            "Supervisor + graf" if active_tasks else "Dashboard hazır",
+            "Hoş geldin" if has_product else "Ürün ekle",
         ),
         node(
-            "agents",
-            "Ajan Altyapısı",
-            "office",
-            pending_approvals == 0 or active_tasks > 0,
-            f"{active_tasks} görev · {pending_approvals} onay",
-        ),
-        node(
-            "product",
-            "Ürün OS",
-            "products",
-            workspace_count > 0,
-            f"{workspace_count} ürün" if workspace_count else "Ürün yok",
-        ),
-        node(
-            "inventory",
-            "Envanter",
+            "store",
+            "Mağaza",
             "tic_products",
             inventory_synced,
-            f"{tic_order_count} sipariş" if inventory_synced else "Bağlantı gerekli",
+            f"{tic_order_count} sipariş" if inventory_synced else "Envanter bağla",
         ),
         node(
-            "ticosclaw",
-            "TicOSClaw",
-            "shopping",
-            has_product and inventory_synced,
-            "Karşılaştırma" if has_product else "Ürün gerekli",
+            "assistant",
+            "Asistan",
+            "supervisor",
+            has_product,
+            "Sohbet" if has_product else "Ürün gerekli",
         ),
     ]

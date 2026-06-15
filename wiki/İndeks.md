@@ -11,9 +11,10 @@
 ## 🏛️ Çekirdek Mimari Katmanlar
 - [[Hermes Orkestratör]] — Request → Route → Plan → DAG → Merge.
 - [[OpenClaw Tool Layer]] — Manifest registry, permission, schema validation, circuit breaker.
-- [[Agent Katmanı]] — 22 ajan, 4 autonomy ajanı, CriticAgent skorlama.
-- [[Tool Manifest Registry]] — 17 manifest dosyası, 98 tool (57 live + 41 mock).
+- [[Agent Katmanı]] — 23 ajan, 4 autonomy ajanı, CriticAgent skorlama.
+- [[Tool Manifest Registry]] — 18 manifest dosyası, 101 tool (60 live + 41 mock).
 - [[Autonomy Layer]] — Decision engine, negotiation, coordination, goals.
+- [[Commerce Control Layer]] — AI e-ticaret modül kontrolü (ürün, stok, sipariş, fraud).
 - [[Agent Mesaj Veriyolu (A2A)]] — A2A pub/sub bus + `agent_handoff` tool.
 - [[Paperclip Layer]] — Org chart, goal tree, per-agent budget.
 - [[LLM Provider Layer]] — Gemini + MockProvider fallback.
