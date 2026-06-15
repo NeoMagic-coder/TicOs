@@ -84,8 +84,8 @@ Proje **backend** (FastAPI, port 8000) ve **frontend** (Vite + React, port 5173)
 ### 1. Depoyu Klonla
 
 ```bash
-git clone https://github.com/NeoMagic-coder/TicOs.git
-cd TicOs
+git clone https://github.com/NeoMagic-coder/TicOSClaw-.git
+cd TicOSClaw-
 ```
 
 ### 2. Ortam Değişkenleri
@@ -109,12 +109,19 @@ VITE_GEMINI_MODEL=gemini-2.5-flash
 
 OpenRouter çağrıları varsayılan olarak ZDR, veri toplama reddi, fiyat tavanı ve düşük gecikme tercihiyle yönlendirilir. Geçici OpenRouter arızalarında `GEMINI_API_KEY` tanımlıysa metin çağrıları Gemini'ye düşer.
 
-### Google OAuth Girişi
+### Kimlik Doğrulama (Google OAuth & Firebase Auth)
 
-OAuth varsayılan olarak kapalıdır; açıldığında uygulama kabuğu ve `/api/v1/*` uçları
-imzalı, süreli `HttpOnly` oturum çerezi gerektirir. Google Cloud Console'da
-**Web application** OAuth istemcisi oluşturun ve yerel geliştirme için şu
-yönlendirme URI'sini ekleyin:
+Sistem hem **Google OAuth** hem de **Firebase Auth** yöntemlerini destekler. Kimlik doğrulama açıldığında, uygulama kabuğu ve `/api/v1/*` uçları imzalı, süreli `HttpOnly` oturum çerezi gerektirir.
+
+Güçlü bir oturum sırrı (`AUTH_SESSION_SECRET`) üretmek için:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+#### A. Google OAuth Girişi
+
+Google Cloud Console'da **Web application** OAuth istemcisi oluşturun ve yerel geliştirme için şu yönlendirme URI'sini ekleyin:
 
 ```text
 http://localhost:8000/api/v1/auth/callback
@@ -134,14 +141,32 @@ FRONTEND_URL=http://localhost:5173
 OAUTH_ALLOWED_EMAIL_DOMAINS=["example.com"]
 ```
 
-Güçlü bir oturum sırrı üretmek için:
+#### B. Firebase Auth Girişi
 
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
+Firebase Authentication'ı Google ile giriş yapma yöntemiyle aktif edin. 
+
+`backend/.env.local` dosyasına projenizin ID'sini tanımlayın:
+
+```env
+AUTH_ENABLED=true
+AUTH_SESSION_SECRET=replace-with-at-least-32-random-characters
+FIREBASE_PROJECT_ID=projenizin-firebase-id-degeri
 ```
 
-Üretimde callback ve frontend adreslerini HTTPS kullanacak şekilde değiştirin ve
-`AUTH_COOKIE_SECURE=true` bırakın.
+`frontend/.env.local` dosyasını oluşturup (`frontend/.env.example` dosyasından kopyalayarak) Firebase istemci anahtarlarını tanımlayın:
+
+```env
+VITE_API_BASE_URL=http://localhost:8000
+VITE_FIREBASE_API_KEY=AIzaSy...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
+VITE_FIREBASE_MEASUREMENT_ID=...
+```
+
+Üretimde callback ve frontend adreslerini HTTPS kullanacak şekilde değiştirin ve `AUTH_COOKIE_SECURE=true` yapın.
 
 ---
 
@@ -236,6 +261,8 @@ scripts/check.sh
 
 ### Üretim Dağıtımı
 
+#### 1. Docker Compose (Klasik Dağıtım)
+
 ```bash
 cp docker/.env.prod.example docker/.env.prod
 # Parolaları, API_KEY ve PUBLIC_HOST değerini değiştirin.
@@ -243,6 +270,28 @@ docker compose --env-file docker/.env.prod -f docker/compose.prod.yml up -d --bu
 ```
 
 `API_KEY` tarayıcı bundle'ına gömülmez; reverse proxy tarafından sunucu tarafında eklenir. Yatay ölçeklemede yalnızca bir süreç `SCHEDULER_ENABLED=true` kullanmalıdır.
+
+#### 2. Firebase Hosting ve Cloud Run Dağıtımı
+
+Sistem, frontend'i **Firebase Hosting**'e ve backend'i **Google Cloud Run**'a dağıtmak için betikler içerir.
+
+##### Firebase Hosting Dağıtımı (Frontend)
+Firebase CLI yüklü ve giriş yapılmış olmalıdır (`firebase login`).
+```bash
+# Windows (PowerShell veya CMD)
+scripts/deploy-firebase.ps1 # veya .bat
+
+# Linux / macOS
+chmod +x scripts/deploy-firebase.sh
+scripts/deploy-firebase.sh
+```
+
+##### Google Cloud Run Dağıtımı (Backend)
+Google Cloud SDK yüklü ve yapılandırılmış olmalıdır.
+```bash
+# Windows
+scripts/deploy-cloudrun.bat
+```
 
 ---
 
