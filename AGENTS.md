@@ -389,3 +389,40 @@ npm run test:e2e
 - Python: `from __future__ import annotations` at the top of every module; PEP 604 unions (`X | None`); dataclasses for value objects; Pydantic for schemas in `apps/api/models/schemas.py`.
 - Logging: use `apps.api.core.logging.get_logger(__name__)` (structlog). Event names are dotted lowercase (`hermes.task.created`, `openclaw.permission_denied`).
 - User-visible strings stay Turkish.
+
+## Cursor Cloud specific instructions
+
+The startup update script installs deps for both apps (Python venv + npm). Notes
+for running/testing once that has run:
+
+- **Python lives in a venv at `backend/.venv`** (matches `scripts/dev.sh` /
+  `scripts/check-static.sh`). Run the backend with it:
+  `cd backend && ../backend/.venv/bin/python -m uvicorn apps.api.main:app --reload --port 8000`.
+  Run tests with `../backend/.venv/bin/python -m pytest apps/api/tests -q`.
+- **Backend runs fully offline.** With no LLM key it uses `MockProvider`
+  (`/health` shows `"llm":"mock"`) and chat responses come back with
+  `llm_degraded:true` / `llm_degraded_reason:"no_api_key"` — that is expected,
+  not a failure. SQLite is the default DB (auto-created at
+  `apps/api/data/app.db`); no Postgres needed. Set `GEMINI_API_KEY` (or Bedrock
+  creds) in `backend/.env.local` only when you need real LLM output.
+- **The chat endpoint path is `/api/v1/ticosclaw/chat`** in the live OpenAPI
+  (the AGENTS.md "Backend API routes" list writes it as `/api/v1/chat`); confirm
+  exact paths at `http://localhost:8000/docs`.
+- **The React frontend cannot build/run from a clean checkout (pre-existing
+  repo bug).** `.gitignore` has an over-broad `lib/` rule that also excludes
+  `frontend/src/lib/`, so `src/lib/api.ts`, `src/lib/gemini.ts`, and
+  `src/lib/aos/adapter.ts` were never committed and are absent. `npm run dev`,
+  `npm run build`, and `npx tsc --noEmit` all fail on these missing modules.
+  Restoring those files (and narrowing the gitignore) is required before the SPA
+  can run; treat the FastAPI backend as the runnable product surface until then.
+- **Backend test isolation is flaky (pre-existing).** In a full `pytest` run,
+  ~5 tests in `test_approval_apply.py` and `test_autonomy_sweeps.py` fail due to
+  shared dev-SQLite state pollution; they pass when run individually.
+  `test_openrouter_provider.py` also fails to import (`OpenRouterProvider` is
+  referenced by the test but not defined in `core/llm/provider.py`). These are
+  code/test issues, not environment problems.
+- There is **no ESLint**; the closest "lint" for the frontend is
+  `npx tsc --noEmit` (currently red due to the missing `src/lib` files above).
+- `scripts/check.sh` needs Docker; for a Docker-free check use
+  `scripts/check-static.sh` (note its frontend steps fail until `src/lib` is
+  restored).
