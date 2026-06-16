@@ -1,8 +1,10 @@
 # TicOs 🦞
 
-
-
- 
+[![CI](https://github.com/NeoMagic-coder/Ticosclaw/actions/workflows/ci.yml/badge.svg)](https://github.com/NeoMagic-coder/Ticosclaw/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![Node 18+](https://img.shields.io/badge/node-18%2B-339933.svg)](https://nodejs.org/)
+[![Demo](https://img.shields.io/badge/demo-ticosclaw.web.app-orange.svg)](https://ticosclaw.web.app/)
 
 **TicOs** (TicOsClaw), tek ürün etrafında dönen e-ticaret operasyonlarını otonom ajan iş akışlarına dönüştüren çoklu-ajan yapay zeka işletim sistemidir. Hermes orkestratörü, OpenClaw araç katmanı, otonomi modülü ve TIC (sipariş/envanter) entegrasyonu ile pazar analizi, fiyatlandırma, stok, pazarlama ve müşteri operasyonlarını tek panelden yönetir.
 
@@ -84,8 +86,8 @@ Proje **backend** (FastAPI, port 8000) ve **frontend** (Vite + React, port 5173)
 ### 1. Depoyu Klonla
 
 ```bash
-git clone https://github.com/NeoMagic-coder/TicOs.git
-cd TicOs
+git clone https://github.com/NeoMagic-coder/Ticosclaw.git
+cd Ticosclaw
 ```
 
 ### 2. Ortam Değişkenleri
