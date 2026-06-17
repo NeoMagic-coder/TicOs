@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "OneProduct Agent OS",
+  "version": "0.1.0",
+  "description": "Hermes çok-ajanlı e-ticaret asistanını tarayıcınıza taşır. Pazaryeri ürünlerini tek tıkla analiz edin.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "OneProduct Agent OS",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_page": "options.html",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*",
+    "https://*.trendyol.com/*",
+    "https://*.hepsiburada.com/*",
+    "https://*.n11.com/*",
+    "https://*.amazon.com.tr/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.trendyol.com/*",
+        "https://*.hepsiburada.com/*",
+        "https://*.n11.com/*",
+        "https://*.amazon.com.tr/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

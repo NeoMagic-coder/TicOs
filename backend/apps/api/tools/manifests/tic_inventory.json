@@ -1,0 +1,138 @@
+[
+  {
+    "tool_id": "tic_product_list",
+    "name": "Inventory: Product List",
+    "description": "Stoktaki tüm ürünleri listele. Kategori veya arama metnine göre filtreleyebilirsin. Agent'ler envanter durumunu sorgulamak için kullanır.",
+    "category": "stock",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "search": {"type": "string"},
+        "category": {"type": "string"},
+        "page": {"type": "integer", "minimum": 1, "default": 1},
+        "page_size": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "data": {"type": "array"},
+        "pagination": {"type": "object"}
+      }
+    },
+    "allowed_agents": ["operations_agent", "inventory_forecast_agent", "pricing_agent"],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": ["stock", "inventory", "product"]
+  },
+  {
+    "tool_id": "tic_stock_check",
+    "name": "Inventory: Stock Check",
+    "description": "Belirli bir ürünün güncel stok seviyesini sorgula. SKU veya ürün adı ile arama yapabilirsin.",
+    "category": "stock",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "product_id": {"type": "string", "description": "Ürün ID'si"}
+      },
+      "required": ["product_id"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "sku": {"type": "string"},
+        "stock": {"type": "integer"},
+        "price": {"type": "number"},
+        "is_active": {"type": "boolean"}
+      }
+    },
+    "allowed_agents": ["operations_agent", "inventory_forecast_agent", "pricing_agent", "customer_support_agent"],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": ["stock", "inventory"]
+  },
+  {
+    "tool_id": "tic_order_list",
+    "name": "Orders: List Orders",
+    "description": "Siparişleri listele. Durum ve platforma göre filtreleyebilirsin. Agent'ler sipariş durumunu kontrol etmek için kullanır.",
+    "category": "order",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "status": {"type": "string", "enum": ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "RETURNED"]},
+        "platform": {"type": "string", "enum": ["TRENDYOL", "HEPSIBURADA", "AMAZON", "MANUAL"]},
+        "page": {"type": "integer", "minimum": 1, "default": 1},
+        "page_size": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "data": {"type": "array"},
+        "pagination": {"type": "object"}
+      }
+    },
+    "allowed_agents": ["operations_agent", "customer_support_agent"],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": ["order", "sales"]
+  },
+  {
+    "tool_id": "tic_order_status_update",
+    "name": "Orders: Update Status",
+    "description": "Bir siparişin durumunu güncelle: ONAYLA, KARGOYA VER, TESLIM ET, İPTAL ET gibi aksiyonlar için kullan.",
+    "category": "order",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "order_id": {"type": "string"},
+        "status": {"type": "string", "enum": ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"]}
+      },
+      "required": ["order_id", "status"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "order_number": {"type": "string"},
+        "status": {"type": "string"}
+      }
+    },
+    "allowed_agents": ["operations_agent"],
+    "cost_estimate_usd": 0.002,
+    "mode": "live",
+    "tags": ["order", "status"]
+  },
+  {
+    "tool_id": "tic_dashboard_stats",
+    "name": "Dashboard: Inventory Stats",
+    "description": "Envanter ve sipariş özet istatistiklerini getir: toplam ürün, sipariş, müşteri sayısı, gelir, düşük stok uyarıları.",
+    "category": "analytics",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {}
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "total_products": {"type": "integer"},
+        "total_orders": {"type": "integer"},
+        "total_customers": {"type": "integer"},
+        "total_revenue": {"type": "number"},
+        "pending_orders": {"type": "integer"},
+        "low_stock_count": {"type": "integer"}
+      }
+    },
+    "allowed_agents": ["operations_agent", "pricing_agent", "executive_agent"],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": ["analytics", "dashboard"]
+  }
+]

@@ -1,0 +1,61 @@
+# Local dev orchestration — backend with --reload, frontend via Vite dev server.
+# Builds use the production Dockerfiles but override CMD to enable reload.
+#
+# Usage from repo root:
+#   docker compose -f docker/compose.yml up --build
+#
+# For production-style (built static assets + nginx), see compose.prod.yml.
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    container_name: oneproduct-api
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
+    env_file:
+      - ../backend/.env.local
+    volumes:
+      - ../backend/apps:/app/apps
+      - api_images:/app/apps/api/_images
+      - api_data:/app/apps/api/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=3).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  web:
+    image: node:20-alpine
+    container_name: oneproduct-web
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+      NODE_ENV: development
+    env_file:
+      - ../backend/.env.local
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    command: sh -c "npm ci --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5173/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  api_images:
+  api_data:

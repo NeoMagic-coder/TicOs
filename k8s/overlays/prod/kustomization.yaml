@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Production environment overlay
+# Usage: kubectl kustomize k8s/overlays/prod
+
+namespace: oneproduct
+
+commonLabels:
+  environment: production
+  app.kubernetes.io/name: oneproduct
+
+replicas:
+  - name: oneproduct-api
+    count: 3
+  - name: oneproduct-web
+    count: 3
+
+images:
+  - name: REGISTRY/api
+    newName: ghcr.io/yourorg/oneproduct/api
+    newTag: latest
+  - name: REGISTRY/web
+    newName: ghcr.io/yourorg/oneproduct/web
+    newTag: latest
+
+configMapGenerator:
+  - name: oneproduct-config
+    behavior: merge
+    literals:
+      - VITE_API_BASE_URL=https://api.oneproduct.example.com
+      - LOG_LEVEL=warn
+
+resources:
+  - ../../deployment.yaml
+  - ../../service.yaml
+  - ../../ingress.yaml

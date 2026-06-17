@@ -1,0 +1,125 @@
+# Production orchestration. Builds both images with the production-mode
+# Dockerfiles (no --reload, nginx-served SPA on port 80) and wires a host-
+# level Caddy/nginx-style reverse proxy if you want a single :80 entry.
+#
+# Usage:
+#   docker compose --env-file docker/.env.prod -f docker/compose.prod.yml up -d --build
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: always
+    environment:
+      POSTGRES_DB: oneproduct
+      POSTGRES_USER: oneproduct
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oneproduct -d oneproduct"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    image: ${REGISTRY:-ghcr.io/yourorg/oneproduct}/api:${IMAGE_TAG:-latest}
+    container_name: oneproduct-api-prod
+    restart: always
+    expose:
+      - "8000"
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      DOCS_ENABLED: "false"
+      DEMO_ROUTES_ENABLED: "false"
+      HEALTH_DETAILS_ENABLED: "false"
+      SCHEDULER_ENABLED: "true"
+      TRUSTED_HOSTS: '["${PUBLIC_HOST:?PUBLIC_HOST is required}","localhost","api"]'
+      DATABASE_URL: "postgresql+psycopg://oneproduct:${POSTGRES_PASSWORD}@db:5432/oneproduct"
+      LLM_PROVIDER: ${LLM_PROVIDER:-openrouter}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.5-flash-lite}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
+      API_KEY: "${API_KEY:?API_KEY is required}"
+      DAILY_BUDGET_MAX_USD: ${DAILY_BUDGET_MAX_USD:-0}
+      PYTHONUNBUFFERED: "1"
+      LOG_LEVEL: info
+    env_file:
+      - path: .env.prod
+        required: false
+    volumes:
+      - api_images:/app/apps/api/_images
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=3).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_GEMINI_MODEL: ${VITE_GEMINI_MODEL:-gemini-2.5-flash-lite}
+    image: ${REGISTRY:-ghcr.io/yourorg/oneproduct}/web:${IMAGE_TAG:-latest}
+    container_name: oneproduct-web-prod
+    restart: always
+    expose:
+      - "80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  reverse-proxy:
+    image: nginx:1.27-alpine
+    container_name: oneproduct-proxy
+    restart: always
+    ports:
+      - "${HTTP_BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-8080}:80"
+    volumes:
+      - ../frontend/nginx.conf:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      API_KEY: "${API_KEY:?API_KEY is required}"
+    depends_on:
+      - api
+      - web
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  api_images:
+    driver: local
+  postgres_data:
+    driver: local

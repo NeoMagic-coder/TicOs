@@ -1,0 +1,34 @@
+[
+  {
+    "tool_id": "brand_visual_generator",
+    "name": "Marka Görseli Üret",
+    "description": "AWS Bedrock Stability Image veya yer tutucu SVG ile ürün/moodboard görseli üretir.",
+    "category": "brand",
+    "provider": "bedrock",
+    "auth_required": true,
+    "timeout_ms": 20000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "prompt": {"type": "string", "description": "Türkçe veya İngilizce görsel tarifi"},
+        "model": {"type": "string", "description": "Opsiyonel — varsayılan stability.stable-image-core-v1:1"},
+        "variation_index": {"type": "integer", "description": "Varyasyon indeksi (0-3)"}
+      },
+      "required": ["prompt"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "url": {"type": "string"},
+        "filename": {"type": "string"},
+        "mime": {"type": "string"},
+        "size_bytes": {"type": "number"},
+        "degraded": {"type": "boolean"}
+      }
+    },
+    "allowed_agents": ["brand_identity_agent", "marketing_agent", "supervisor"],
+    "cost_estimate_usd": 0.039,
+    "mode": "live",
+    "tags": ["brand", "image", "bedrock"]
+  }
+]

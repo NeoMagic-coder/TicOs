@@ -1,0 +1,331 @@
+[
+  {
+    "tool_id": "brand_name_generator",
+    "name": "Marka İsmi Üret",
+    "description": "10 marka ismi alternatifi (skorlu).",
+    "category": "brand",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "vibe": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "names": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "brand_identity_agent"
+    ],
+    "cost_estimate_usd": 0.008,
+    "mode": "live",
+    "tags": [
+      "brand",
+      "naming"
+    ]
+  },
+  {
+    "tool_id": "color_palette_generator",
+    "name": "Renk Paleti",
+    "description": "Birincil/ikincil/nötr renk seti üretir.",
+    "category": "brand",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "mood": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "palette": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "brand_identity_agent"
+    ],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": [
+      "brand",
+      "design"
+    ]
+  },
+  {
+    "tool_id": "target_persona_builder",
+    "name": "Hedef Persona",
+    "description": "2-3 detaylı persona kartı üretir.",
+    "category": "brand",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "product": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "personas": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "brand_identity_agent",
+      "marketing_agent"
+    ],
+    "cost_estimate_usd": 0.005,
+    "mode": "live",
+    "tags": [
+      "brand",
+      "persona"
+    ]
+  },
+  {
+    "tool_id": "margin_calculator",
+    "name": "Marj Hesaplayıcı",
+    "description": "Ürün maliyeti ve fiyatı üzerinden marj hesaplar.",
+    "category": "pricing",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "cost": {
+          "type": "number"
+        },
+        "price": {
+          "type": "number"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "margin_pct": {
+          "type": "number"
+        }
+      }
+    },
+    "allowed_agents": [
+      "pricing_agent",
+      "analytics_agent",
+      "supervisor"
+    ],
+    "cost_estimate_usd": 0.0,
+    "mode": "live",
+    "tags": [
+      "pricing"
+    ]
+  },
+  {
+    "tool_id": "competitor_price_lookup",
+    "name": "Rakip Fiyat Sorgu",
+    "description": "Rakip ürün fiyatlarını toplar ve karşılaştırır.",
+    "category": "pricing",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "competitors": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "pricing_agent",
+      "analytics_agent"
+    ],
+    "cost_estimate_usd": 0.005,
+    "mode": "mock",
+    "tags": [
+      "pricing",
+      "competitor"
+    ]
+  },
+  {
+    "tool_id": "competitor_price_scan",
+    "name": "Rakip Fiyat Taraması",
+    "description": "Birden fazla SKU için rakip fiyatlarını tarar; ölçüm zaman damgası ile döndürür.",
+    "category": "pricing",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "skus": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sku": {"type": "string"},
+              "query": {"type": "string"}
+            },
+            "required": ["sku"]
+          }
+        },
+        "source": {"type": "string"},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 50}
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "measured_at": {"type": "string"},
+        "source": {"type": "string"},
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sku": {"type": "string"},
+              "avg": {"type": "number"},
+              "min": {"type": "number"},
+              "max": {"type": "number"},
+              "samples": {"type": "integer"}
+            }
+          }
+        }
+      }
+    },
+    "allowed_agents": [
+      "pricing_agent",
+      "analytics_agent",
+      "pricing_finance_agent"
+    ],
+    "cost_estimate_usd": 0.01,
+    "mode": "live",
+    "tags": [
+      "pricing",
+      "competitor",
+      "scan",
+      "collectapi"
+    ]
+  },
+  {
+    "tool_id": "campaign_discount_simulator",
+    "name": "Kampanya Simülatörü",
+    "description": "Farklı indirim oranlarının satış etkisini simüle eder.",
+    "category": "pricing",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "discount_pct": {
+          "type": "number"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "estimated_uplift": {
+          "type": "number"
+        }
+      }
+    },
+    "allowed_agents": [
+      "pricing_agent",
+      "marketing_agent"
+    ],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": [
+      "pricing",
+      "simulation"
+    ]
+  },
+  {
+    "tool_id": "cogs_calculator",
+    "name": "COGS Hesap",
+    "description": "Ürün maliyeti + kargo + paketleme + komisyon.",
+    "category": "product",
+    "provider": "internal",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "unit_cost": {
+          "type": "number"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "cogs": {
+          "type": "number"
+        }
+      }
+    },
+    "allowed_agents": [
+      "product_development_agent",
+      "pricing_agent",
+      "supervisor"
+    ],
+    "cost_estimate_usd": 0.0,
+    "mode": "live",
+    "tags": [
+      "cogs",
+      "pricing"
+    ]
+  },
+  {
+    "tool_id": "alibaba_supplier_search",
+    "name": "Alibaba Tedarikçi",
+    "description": "Alibaba'da tedarikçileri puanlı listele.",
+    "category": "product",
+    "provider": "alibaba",
+    "auth_required": false,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string"
+        }
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "suppliers": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "product_development_agent"
+    ],
+    "cost_estimate_usd": 0.005,
+    "mode": "mock",
+    "tags": [
+      "product",
+      "supplier"
+    ]
+  }
+]
