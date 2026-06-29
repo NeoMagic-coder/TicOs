@@ -1,0 +1,244 @@
+{
+  "common": {
+    "appName": "ticosclaw",
+    "loading": "Yükleniyor...",
+    "save": "Kaydet",
+    "cancel": "İptal",
+    "edit": "Düzenle",
+    "delete": "Sil",
+    "connect": "Bağla",
+    "refresh": "Yenile",
+    "today": "Bugün",
+    "help": "Yardım",
+    "online": "çevrimiçi",
+    "pendingApproval": "Onay Bekliyor",
+    "scheduled": "Planlandı",
+    "publishing": "Yayınlanıyor",
+    "published": "Yayınlandı",
+    "failed": "Başarısız",
+    "trialDaysLeft": "Deneme · {days} gün kaldı",
+    "upgradePlan": "Planı yükselt"
+  },
+  "nav": {
+    "dashboard": "Yönetici",
+    "brandVoice": "Marka Danışmanım",
+    "team": "Ekibim",
+    "automations": "Otomasyonlar",
+    "visualStudio": "Yaratıcı Stüdyo",
+    "calendar": "İçerik Takvimim",
+    "goals": "Hedefler",
+    "new": "YENİ"
+  },
+  "dashboard": {
+    "greeting": "İyi günler, {name}. Sen yokken de çalıştım.",
+    "expertsOnline": "{count} uzman çevrimiçi",
+    "dateLine": "{date} · aşağıdaki her şey onayını bekliyor",
+    "ticosManaging": "ekibini yönetiyor",
+    "chatPlaceholder": "Ticosclaw'a her şeyi sorabilirsin - ekibini, araçlarını ve hedeflerini biliyor",
+    "quickActions": {
+      "inbox": "Gelen kutusu",
+      "todayIdea": "Bugünün fikrini gör",
+      "goalsStatus": "Hedeflerim nasıl?",
+      "teamToday": "Ekibim bugün ne yaptı?",
+      "weekContent": "Bu haftanın içeriklerini oluştur",
+      "goalsProgress": "Hedeflerim nasıl gidiyor?",
+      "teamMembers": "Ekibimde kimler var?"
+    },
+    "approvalItems": {
+      "contentIdea": "İçerik fikri",
+      "noIntegration": "Entegrasyon yok"
+    }
+  },
+  "brandVoice": {
+    "emptyTitle": "AI Görünürlük Marka Danışmanı",
+    "emptyDescription": "Web sitenizi girin, yapay zeka markanızı baştan sona analiz etsin: konumlandırma, rakipler, değer önerisi, personalar ve dijital strateji.",
+    "urlPlaceholder": "https://websiteniz.com",
+    "cta": "Markamı Analiz Et",
+    "ctaNote": "Web sitenizi girin, gerisini biz halledelim",
+    "analyzing": "Analiz ediliyor",
+    "analyzingComplete": "tamamlandı",
+    "reanalyze": "Yeniden Analiz Et",
+    "steps": {
+      "scrape": "Web sitesi taranıyor",
+      "brand": "Marka varlıkları çıkarılıyor",
+      "positioning": "Konumlandırma belirleniyor",
+      "competitors": "Rakipler taranıyor",
+      "personas": "Personalar oluşturuluyor",
+      "strategy": "Dijital strateji hazırlanıyor"
+    },
+    "tabs": {
+      "assets": "Marka Varlıkları",
+      "summary": "Özet",
+      "positioning": "Konumlandırma",
+      "competitors": "Rakipler",
+      "value": "Değer Önerisi",
+      "segment": "Hedef Segment",
+      "personas": "Personalar",
+      "strategy": "Dijital Strateji"
+    },
+    "tone": "Ton",
+    "personality": "Kişilik",
+    "wordPreferences": "Kelime Tercihleri",
+    "audience": "Hedef Kitle",
+    "colors": "Marka Renkleri",
+    "fonts": "Font Tercihleri",
+    "industry": "Sektör",
+    "tagline": "Slogan",
+    "valuePoints": "Öne Çıkan Faydalar",
+    "segments": "Segmentler",
+    "personaGoals": "Hedefler",
+    "personaPains": "Zorluklar",
+    "strengths": "Güçlü Yönler",
+    "weaknesses": "Zayıf Yönler",
+    "empty": "Bu bölüm için yeterli veri bulunamadı.",
+    "addBrand": "Marka Ekle",
+    "deleteBrand": "Marka Sil",
+    "deleteConfirm": "Bu markayı ve tüm analiz verilerini silmek istediğinize emin misiniz?",
+    "newBrand": "Yeni Marka",
+    "noBrands": "Henüz marka eklenmedi",
+    "noBrandsDescription": "Başlamak için yeni bir marka ekleyin veya web sitenizi analiz edin."
+  },
+  "team": {
+    "title": "Ekibiniz",
+    "subtitle": "{count} takım arkadaşı - hepsi çevrimiçi",
+    "inbox": "Gelen Kutusu",
+    "membersTitle": "TAKIM ÜYELERİ",
+    "inboxDescription": "Ekibinizden gelen onay bekleyen görevler ve mesajlar",
+    "tabs": {
+      "all": "Tümü",
+      "email": "E-posta",
+      "messages": "Mesajlar"
+    },
+    "emptyInbox": "Her şey yolunda",
+    "agents": {
+      "social": {
+        "name": "Sosyal Medya Uzmanı",
+        "role": "içerikler, açıklamalar, hashtag'ler"
+      },
+      "blog": {
+        "name": "Blog ve SEO Uzmanı",
+        "role": "makaleler, anahtar kelimeler, sıralamalar"
+      },
+      "sales": {
+        "name": "Satış Uzmanı",
+        "role": "listeler, açıklamalar, dönüşümler"
+      },
+      "email": {
+        "name": "E-posta Uzmanı",
+        "role": "bültenler, kampanyalar, akışlar"
+      }
+    }
+  },
+  "automations": {
+    "title": "Otomasyonlar",
+    "subtitle": "Ekibinin senin yerine yürüttüğü beş şey. Taslaklar gelir, sen onaylarsın, biz yayınlarız. Geri kalanı otomatik.",
+    "tabs": {
+      "automations": "Otomasyonlar",
+      "integrations": "Entegrasyonlar"
+    },
+    "cards": {
+      "social": {
+        "title": "Sosyal medya paylaşımları",
+        "description": "Otomatik zamanlama ile sosyal medya içeriklerinizi yayınlayın.",
+        "cta": "İçerik takvimini aç →"
+      },
+      "mail": {
+        "title": "Mail etiketleme ve taslaklar",
+        "description": "Aciliyete göre etiketleme ve yanıt taslağı oluşturma.",
+        "cta": "Mail entegrasyonlarını yönet →"
+      },
+      "blog": {
+        "title": "Blog yayınlama",
+        "description": "WordPress'e otomatik yükleme.",
+        "cta": "Blog ve SEO Uzmanınla konuş →"
+      },
+      "reddit": {
+        "title": "Reddit katılımı",
+        "description": "Niş topluluk bulma ve günde 2-3 gönderi taslağı.",
+        "cta": "Reddit entegrasyonuna git →"
+      },
+      "trends": {
+        "title": "Günlük trend fikirleri",
+        "description": "Trendler, haberler ve özel günler.",
+        "cta": "Bugünün fikirlerini gör →"
+      }
+    }
+  },
+  "visualStudio": {
+    "title": "Yaratıcı Stüdyo",
+    "subtitle": "Ekibin ürettiği her şey burada.",
+    "imageStudio": "Görsel Stüdyo",
+    "imageStudioDesc": "Görseller, karuseller, kapaklar",
+    "videoStudio": "Video Stüdyo",
+    "videoStudioDesc": "Reels, shorts, klipler",
+    "infoTitle": "Bilmekte fayda var",
+    "infoText": "Oluşturduğunuz tüm görseller otomatik olarak kaydedilir.",
+    "createTitle": "Profesyonel Görsel Oluştur",
+    "remaining": "{count} kalan",
+    "tabs": {
+      "create": "Görsel Oluştur",
+      "history": "Geçmiş"
+    },
+    "images": "Görseller (opsiyonel)",
+    "selectImages": "Görselleri Seç",
+    "selectFromHistory": "Geçmişten Seç",
+    "prompt": "Yaratıcı görsel oluşturma talimatlarınızı yazın",
+    "generateIdeas": "Yaratıcı Fikirler Üret",
+    "imageSize": "Görsel Boyutu",
+    "imageFormat": "Görsel Formatı",
+    "variations": "Alternatif Görsel Sayısı",
+    "createCta": "Görsel Oluştur →",
+    "result": "Sonuç",
+    "sample": "Örnek Görsel",
+    "showSamples": "Örnekleri Göster"
+  },
+  "calendar": {
+    "title": "İçerik Takvimi",
+    "suggest": "Öneri Oluştur",
+    "views": {
+      "month": "Ay",
+      "twoWeeks": "2 Hafta",
+      "week": "Hafta",
+      "day": "Gün"
+    },
+    "platforms": {
+      "instagram": "Instagram",
+      "linkedin": "LinkedIn",
+      "wordpress": "WordPress",
+      "facebook": "Facebook"
+    },
+    "connectWarning": "{platform} bağlı değil"
+  },
+  "goals": {
+    "title": "Hedefler",
+    "subtitle": "Pazarlama hedeflerinizi takip edin ve AI ekibinizin ilerlemesini görün.",
+    "addGoal": "Hedef Ekle",
+    "empty": "Henüz hedef eklenmedi",
+    "progress": "İlerleme"
+  },
+  "onboarding": {
+    "welcome": "Ticosclaw'a Hoş Geldiniz",
+    "stepBrand": "Markanızı Tanıyalım",
+    "stepTeam": "Ekibiniz Hazır",
+    "stepIntegrations": "Platformları Bağlayın",
+    "skip": "Şimdilik Atla",
+    "continue": "Devam Et",
+    "finish": "Dashboard'a Git"
+  },
+  "billing": {
+    "title": "Planlar",
+    "trial": "Ücretsiz Deneme",
+    "starter": "Starter",
+    "pro": "Pro",
+    "agency": "Agency",
+    "currentPlan": "Mevcut Plan",
+    "upgrade": "Yükselt"
+  },
+  "integrations": {
+    "title": "Entegrasyonlar",
+    "connected": "Bağlı",
+    "notConnected": "Bağlı Değil",
+    "connect": "Bağla",
+    "disconnect": "Bağlantıyı Kes"
+  }
+}

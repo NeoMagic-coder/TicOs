@@ -11,6 +11,12 @@ node_modules
 dist
 dist-ssr
 *.local
+.next
+out
+
+# Next.js
+web/.next/
+web/out/
 
 # Editor directories and files
 .vscode/*
@@ -35,8 +41,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-/backend/**/lib/
-/backend/**/lib64/
 parts/
 sdist/
 var/
@@ -70,9 +74,8 @@ playwright/.cache/
 .claude
 .playwright-mcp
 
-# Local dev databases & generated images
+# Local dev databases
 **/data/*.db
-backend/apps/_images/
 
 # Obsidian (local UI state)
 .obsidian/workspace.json

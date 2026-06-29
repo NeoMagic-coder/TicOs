@@ -1,0 +1,244 @@
+{
+  "common": {
+    "appName": "ticosclaw",
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "delete": "Delete",
+    "connect": "Connect",
+    "refresh": "Refresh",
+    "today": "Today",
+    "help": "Help",
+    "online": "online",
+    "pendingApproval": "Pending Approval",
+    "scheduled": "Scheduled",
+    "publishing": "Publishing",
+    "published": "Published",
+    "failed": "Failed",
+    "trialDaysLeft": "Trial · {days} days left",
+    "upgradePlan": "Upgrade plan"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "brandVoice": "Brand Advisor",
+    "team": "My Team",
+    "automations": "Automations",
+    "visualStudio": "Creative Studio",
+    "calendar": "Content Calendar",
+    "goals": "Goals",
+    "new": "NEW"
+  },
+  "dashboard": {
+    "greeting": "Good day, {name}. I kept working while you were away.",
+    "expertsOnline": "{count} experts online",
+    "dateLine": "{date} · everything below awaits your approval",
+    "ticosManaging": "managing your team",
+    "chatPlaceholder": "Ask Ticosclaw anything — it knows your team, tools, and goals",
+    "quickActions": {
+      "inbox": "Inbox",
+      "todayIdea": "See today's idea",
+      "goalsStatus": "How are my goals?",
+      "teamToday": "What did my team do today?",
+      "weekContent": "Create this week's content",
+      "goalsProgress": "How are my goals progressing?",
+      "teamMembers": "Who's on my team?"
+    },
+    "approvalItems": {
+      "contentIdea": "Content idea",
+      "noIntegration": "No integration"
+    }
+  },
+  "brandVoice": {
+    "emptyTitle": "AI Visibility Brand Advisor",
+    "emptyDescription": "Enter your website URL and AI will analyze your brand end to end: positioning, competitors, value proposition, personas and digital strategy.",
+    "urlPlaceholder": "https://yourwebsite.com",
+    "cta": "Analyze My Brand",
+    "ctaNote": "Enter your website, we'll handle the rest",
+    "analyzing": "Analyzing",
+    "analyzingComplete": "complete",
+    "reanalyze": "Re-analyze",
+    "steps": {
+      "scrape": "Crawling website",
+      "brand": "Extracting brand assets",
+      "positioning": "Determining positioning",
+      "competitors": "Scanning competitors",
+      "personas": "Building personas",
+      "strategy": "Preparing digital strategy"
+    },
+    "tabs": {
+      "assets": "Brand Assets",
+      "summary": "Summary",
+      "positioning": "Positioning",
+      "competitors": "Competitors",
+      "value": "Value Proposition",
+      "segment": "Target Segment",
+      "personas": "Personas",
+      "strategy": "Digital Strategy"
+    },
+    "tone": "Tone",
+    "personality": "Personality",
+    "wordPreferences": "Word Preferences",
+    "audience": "Target Audience",
+    "colors": "Brand Colors",
+    "fonts": "Font Preferences",
+    "industry": "Industry",
+    "tagline": "Tagline",
+    "valuePoints": "Key Benefits",
+    "segments": "Segments",
+    "personaGoals": "Goals",
+    "personaPains": "Pain Points",
+    "strengths": "Strengths",
+    "weaknesses": "Weaknesses",
+    "empty": "Not enough data for this section.",
+    "addBrand": "Add Brand",
+    "deleteBrand": "Delete Brand",
+    "deleteConfirm": "Are you sure you want to delete this brand and all its analysis data?",
+    "newBrand": "New Brand",
+    "noBrands": "No brands yet",
+    "noBrandsDescription": "Add a new brand to get started, then analyze your website."
+  },
+  "team": {
+    "title": "Your Team",
+    "subtitle": "{count} teammates — all online",
+    "inbox": "Inbox",
+    "membersTitle": "TEAM MEMBERS",
+    "inboxDescription": "Tasks and messages awaiting approval from your team",
+    "tabs": {
+      "all": "All",
+      "email": "Email",
+      "messages": "Messages"
+    },
+    "emptyInbox": "All clear",
+    "agents": {
+      "social": {
+        "name": "Social Media Expert",
+        "role": "content, captions, hashtags"
+      },
+      "blog": {
+        "name": "Blog & SEO Expert",
+        "role": "articles, keywords, rankings"
+      },
+      "sales": {
+        "name": "Sales Expert",
+        "role": "listings, descriptions, conversions"
+      },
+      "email": {
+        "name": "Email Expert",
+        "role": "newsletters, campaigns, flows"
+      }
+    }
+  },
+  "automations": {
+    "title": "Automations",
+    "subtitle": "Five things your team runs for you. Drafts arrive, you approve, we publish. The rest is automatic.",
+    "tabs": {
+      "automations": "Automations",
+      "integrations": "Integrations"
+    },
+    "cards": {
+      "social": {
+        "title": "Social media posts",
+        "description": "Publish your social content with automatic scheduling.",
+        "cta": "Open content calendar →"
+      },
+      "mail": {
+        "title": "Mail labeling & drafts",
+        "description": "Label by urgency and generate reply drafts.",
+        "cta": "Manage mail integrations →"
+      },
+      "blog": {
+        "title": "Blog publishing",
+        "description": "Automatic upload to WordPress.",
+        "cta": "Talk to your Blog & SEO Expert →"
+      },
+      "reddit": {
+        "title": "Reddit engagement",
+        "description": "Find niche communities and draft 2-3 posts per day.",
+        "cta": "Go to Reddit integration →"
+      },
+      "trends": {
+        "title": "Daily trend ideas",
+        "description": "Trends, news, and special occasions.",
+        "cta": "See today's ideas →"
+      }
+    }
+  },
+  "visualStudio": {
+    "title": "Creative Studio",
+    "subtitle": "Everything your team creates lives here.",
+    "imageStudio": "Image Studio",
+    "imageStudioDesc": "Images, carousels, covers",
+    "videoStudio": "Video Studio",
+    "videoStudioDesc": "Reels, shorts, clips",
+    "infoTitle": "Good to know",
+    "infoText": "All images you create are saved automatically.",
+    "createTitle": "Create Professional Image",
+    "remaining": "{count} remaining",
+    "tabs": {
+      "create": "Create Image",
+      "history": "History"
+    },
+    "images": "Images (optional)",
+    "selectImages": "Select Images",
+    "selectFromHistory": "Select from History",
+    "prompt": "Write your creative image generation instructions",
+    "generateIdeas": "Generate Creative Ideas",
+    "imageSize": "Image Size",
+    "imageFormat": "Image Format",
+    "variations": "Number of Variations",
+    "createCta": "Create Image →",
+    "result": "Result",
+    "sample": "Sample Image",
+    "showSamples": "Show Samples"
+  },
+  "calendar": {
+    "title": "Content Calendar",
+    "suggest": "Create Suggestion",
+    "views": {
+      "month": "Month",
+      "twoWeeks": "2 Weeks",
+      "week": "Week",
+      "day": "Day"
+    },
+    "platforms": {
+      "instagram": "Instagram",
+      "linkedin": "LinkedIn",
+      "wordpress": "WordPress",
+      "facebook": "Facebook"
+    },
+    "connectWarning": "{platform} not connected"
+  },
+  "goals": {
+    "title": "Goals",
+    "subtitle": "Track your marketing goals and see your AI team's progress.",
+    "addGoal": "Add Goal",
+    "empty": "No goals added yet",
+    "progress": "Progress"
+  },
+  "onboarding": {
+    "welcome": "Welcome to Ticosclaw",
+    "stepBrand": "Let's Know Your Brand",
+    "stepTeam": "Your Team is Ready",
+    "stepIntegrations": "Connect Platforms",
+    "skip": "Skip for Now",
+    "continue": "Continue",
+    "finish": "Go to Dashboard"
+  },
+  "billing": {
+    "title": "Plans",
+    "trial": "Free Trial",
+    "starter": "Starter",
+    "pro": "Pro",
+    "agency": "Agency",
+    "currentPlan": "Current Plan",
+    "upgrade": "Upgrade"
+  },
+  "integrations": {
+    "title": "Integrations",
+    "connected": "Connected",
+    "notConnected": "Not Connected",
+    "connect": "Connect",
+    "disconnect": "Disconnect"
+  }
+}

@@ -1,0 +1,62 @@
+name: Deploy to VPS
+
+# Pushes to main that touch the web app trigger an SSH deploy.
+# The VPS pulls the latest code and rebuilds the Docker stack (web + Caddy).
+#
+# Required GitHub repo secrets (Settings -> Secrets and variables -> Actions):
+#   VPS_HOST        VPS IP address or hostname
+#   VPS_USER        SSH user (e.g. root or deploy)
+#   VPS_SSH_KEY     Private SSH key (PEM) whose public key is in the VPS authorized_keys
+#   VPS_PORT        (optional) SSH port, defaults to 22
+#   VPS_APP_DIR     (optional) Absolute path to the repo on the VPS, defaults to ~/Ticosclaw
+#   REPO_URL        (optional) Git URL to clone on first run, defaults to this repo's https URL
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: vps-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -euo pipefail
+            APP_DIR="${{ secrets.VPS_APP_DIR || '$HOME/Ticosclaw' }}"
+            REPO_URL="${{ secrets.REPO_URL || 'https://github.com/NeoMagic-coder/Ticosclaw.git' }}"
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              echo "==> First run: cloning repo into $APP_DIR"
+              git clone "$REPO_URL" "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
+            echo "==> Pulling latest code"
+            git fetch --all --prune
+            git reset --hard origin/main
+
+            cd web
+            if [ ! -f .env.local ]; then
+              echo "ERROR: $APP_DIR/web/.env.local not found." >&2
+              echo "Create it on the VPS once (cp .env.example .env.local and fill keys)." >&2
+              exit 1
+            fi
+
+            chmod +x deploy.sh
+            ./deploy.sh
