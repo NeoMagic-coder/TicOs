@@ -1,0 +1,370 @@
+[
+  {
+    "tool_id": "google_trends_query",
+    "name": "Google Trends Sorgu",
+    "description": "Anahtar kelime için trend hareketi getirir.",
+    "category": "research",
+    "provider": "google",
+    "auth_required": false,
+    "timeout_ms": 15000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string",
+          "default": "TR"
+        }
+      },
+      "required": [
+        "keyword"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "trend_pct_12m": {
+          "type": "string"
+        }
+      }
+    },
+    "allowed_agents": [
+      "market_research_agent",
+      "supervisor",
+      "analytics_agent"
+    ],
+    "cost_estimate_usd": 0.001,
+    "mode": "mock",
+    "tags": [
+      "research",
+      "trend"
+    ]
+  },
+  {
+    "tool_id": "competitor_profile_builder",
+    "name": "Rakip Profili Çıkar",
+    "description": "Rakip mağazanın ürün/fiyat/yorum profilini çıkarır.",
+    "category": "research",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 30000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "object"
+        }
+      }
+    },
+    "allowed_agents": [
+      "market_research_agent"
+    ],
+    "cost_estimate_usd": 0.008,
+    "mode": "mock",
+    "tags": [
+      "research",
+      "competitor"
+    ]
+  },
+  {
+    "tool_id": "niche_scorer",
+    "name": "Niş Skorlayıcı",
+    "description": "Bir niş için 0-100 girilmeli mi skoru.",
+    "category": "research",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 12000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "niche": {
+          "type": "string"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number"
+        }
+      }
+    },
+    "allowed_agents": [
+      "market_research_agent",
+      "supervisor"
+    ],
+    "cost_estimate_usd": 0.002,
+    "mode": "live",
+    "tags": [
+      "research",
+      "scoring"
+    ]
+  },
+  {
+    "tool_id": "demand_estimator",
+    "name": "Talep Tahmini",
+    "description": "Pazar büyüklüğü ve aylık talep tahmini.",
+    "category": "research",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 15000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "keyword": {
+          "type": "string"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "monthly_searches": {
+          "type": "integer"
+        }
+      }
+    },
+    "allowed_agents": [
+      "market_research_agent",
+      "analytics_agent"
+    ],
+    "cost_estimate_usd": 0.003,
+    "mode": "mock",
+    "tags": [
+      "research"
+    ]
+  },
+  {
+    "tool_id": "web_search_grounded",
+    "name": "Google Search Grounded Answer",
+    "description": "Soruyu Gemini + Google Search ile yanıtlar; kaynak URI'leri döndürür.",
+    "category": "research",
+    "provider": "gemini",
+    "auth_required": true,
+    "timeout_ms": 30000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 128,
+          "maximum": 4096,
+          "default": 800
+        }
+      },
+      "required": [
+        "query"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "answer": {
+          "type": "string"
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "uri": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "degraded": {
+          "type": "boolean"
+        }
+      }
+    },
+    "allowed_agents": [
+      "market_research_agent",
+      "supervisor",
+      "analytics_agent"
+    ],
+    "cost_estimate_usd": 0.003,
+    "mode": "live",
+    "tags": [
+      "research",
+      "grounding",
+      "search"
+    ]
+  },
+  {
+    "tool_id": "competitor_review_analyzer",
+    "name": "Rakip Yorum Analizi",
+    "description": "Rakip ürün yorumlarını analiz eder: duygu, övgü/şikayet temaları ve fırsatlar.",
+    "category": "research",
+    "provider": "gemini",
+    "auth_required": false,
+    "timeout_ms": 30000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "reviews": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "product": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string",
+          "default": "tr"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "overall_sentiment": {
+          "type": "string",
+          "enum": ["pos", "neg", "neu"]
+        },
+        "positive_themes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "negative_themes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "opportunities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "allowed_agents": [
+      "market_research_agent",
+      "review_reputation_agent",
+      "supervisor"
+    ],
+    "cost_estimate_usd": 0.004,
+    "mode": "live",
+    "tags": [
+      "research",
+      "competitor",
+      "review"
+    ]
+  },
+  {
+    "tool_id": "competitor_report_builder",
+    "name": "Rakip Analiz Raporu",
+    "description": "Fiyat verisi + yorum içgörülerini tek rekabet raporunda birleştirir.",
+    "category": "research",
+    "provider": "gemini",
+    "auth_required": false,
+    "timeout_ms": 30000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "product": {
+          "type": "string"
+        },
+        "price_data": {
+          "type": "object"
+        },
+        "review_insights": {
+          "type": "object"
+        },
+        "competitors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "language": {
+          "type": "string",
+          "default": "tr"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "positioning": {
+          "type": "string"
+        },
+        "price_recommendation": {
+          "type": "string"
+        },
+        "strengths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "weaknesses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "allowed_agents": [
+      "market_research_agent",
+      "pricing_agent",
+      "supervisor"
+    ],
+    "cost_estimate_usd": 0.005,
+    "mode": "live",
+    "tags": [
+      "research",
+      "competitor",
+      "report"
+    ]
+  }
+]

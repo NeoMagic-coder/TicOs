@@ -1,0 +1,357 @@
+[
+  {
+    "tool_id": "ga4_get_report",
+    "name": "GA4 Raporu",
+    "description": "Google Analytics 4 üzerinden trafik, dönüşüm ve kanal raporu çeker.",
+    "category": "analytics",
+    "provider": "google",
+    "auth_required": true,
+    "timeout_ms": 25000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "date_range": {
+          "type": "string",
+          "default": "last_30d"
+        },
+        "metrics": {
+          "type": "array"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "report": {
+          "type": "object"
+        }
+      }
+    },
+    "allowed_agents": [
+      "analytics_agent",
+      "marketing_agent",
+      "supervisor"
+    ],
+    "cost_estimate_usd": 0.0,
+    "mode": "mock",
+    "tags": [
+      "analytics",
+      "ga4"
+    ]
+  },
+  {
+    "tool_id": "analytics_sales_summary",
+    "name": "Satış Özeti",
+    "description": "Belirtilen aralık için satış, AOV ve dönüşüm özeti döner.",
+    "category": "analytics",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 12000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": "string",
+          "default": "last_7d"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "revenue": {
+          "type": "number"
+        },
+        "orders": {
+          "type": "integer"
+        },
+        "aov": {
+          "type": "number"
+        }
+      }
+    },
+    "allowed_agents": [
+      "analytics_agent",
+      "supervisor"
+    ],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": [
+      "analytics",
+      "sales"
+    ]
+  },
+  {
+    "tool_id": "trend_detector",
+    "name": "Trend Algılayıcı",
+    "description": "Metrik serisinde anlamlı trend değişimlerini tespit eder.",
+    "category": "analytics",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 12000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "series": {
+          "type": "array"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "trends": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "analytics_agent",
+      "growth_agent"
+    ],
+    "cost_estimate_usd": 0.002,
+    "mode": "live",
+    "tags": [
+      "analytics",
+      "trend"
+    ]
+  },
+  {
+    "tool_id": "anomaly_detector",
+    "name": "Anomali Algılayıcı",
+    "description": "Z-score tabanlı anomali tespiti.",
+    "category": "analytics",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 12000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "series": {
+          "type": "array"
+        },
+        "threshold": {
+          "type": "number",
+          "default": 2.5
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "anomalies": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "analytics_agent",
+      "operations_agent"
+    ],
+    "cost_estimate_usd": 0.002,
+    "mode": "live",
+    "tags": [
+      "analytics",
+      "anomaly"
+    ]
+  },
+  {
+    "tool_id": "listing_compliance_check",
+    "name": "Pazaryeri Uyumluluk Kontrolü",
+    "description": "Ürün listingini Trendyol/Hepsiburada kurallarına göre kontrol eder.",
+    "category": "compliance",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 12000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "listing": {
+          "type": "object"
+        },
+        "marketplace": {
+          "type": "string"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "compliant": {
+          "type": "boolean"
+        },
+        "issues": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "compliance_agent",
+      "catalog_agent",
+      "supervisor"
+    ],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": [
+      "compliance",
+      "marketplace"
+    ]
+  },
+  {
+    "tool_id": "forbidden_word_scanner",
+    "name": "Yasaklı Kelime Tarayıcı",
+    "description": "Metinde pazaryeri yasaklı kelimelerini bulur.",
+    "category": "compliance",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 6000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "hits": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "compliance_agent",
+      "content_seo_agent",
+      "catalog_agent"
+    ],
+    "cost_estimate_usd": 0.0,
+    "mode": "live",
+    "tags": [
+      "compliance",
+      "moderation"
+    ]
+  },
+  {
+    "tool_id": "kvkk_compliance_checker",
+    "name": "KVKK Uyumluluk Kontrolü",
+    "description": "Form, çerez ve aydınlatma metinlerini KVKK gereksinimlerine göre kontrol eder.",
+    "category": "legal",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 15000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "page_url": {
+          "type": "string"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "compliant": {
+          "type": "boolean"
+        },
+        "issues": {
+          "type": "array"
+        }
+      }
+    },
+    "allowed_agents": [
+      "legal_compliance_agent",
+      "supervisor"
+    ],
+    "cost_estimate_usd": 0.002,
+    "mode": "mock",
+    "tags": [
+      "legal",
+      "kvkk"
+    ]
+  },
+  {
+    "tool_id": "return_policy_generator",
+    "name": "İade Politikası Üretici",
+    "description": "Mesafeli satış mevzuatına uygun iade politikası taslağı üretir.",
+    "category": "legal",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 15000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "return_window_days": {
+          "type": "integer",
+          "default": 14
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "policy_text": {
+          "type": "string"
+        }
+      }
+    },
+    "allowed_agents": [
+      "legal_compliance_agent"
+    ],
+    "requires_approval": true,
+    "cost_estimate_usd": 0.004,
+    "mode": "live",
+    "tags": [
+      "legal",
+      "policy"
+    ]
+  },
+  {
+    "tool_id": "privacy_policy_generator",
+    "name": "Gizlilik Politikası Üretici",
+    "description": "KVKK uyumlu gizlilik politikası ve aydınlatma metni taslağı üretir.",
+    "category": "legal",
+    "provider": "internal",
+    "auth_required": false,
+    "timeout_ms": 18000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "company_name": {
+          "type": "string"
+        },
+        "data_categories": {
+          "type": "array"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "policy_text": {
+          "type": "string"
+        }
+      }
+    },
+    "allowed_agents": [
+      "legal_compliance_agent"
+    ],
+    "requires_approval": true,
+    "cost_estimate_usd": 0.005,
+    "mode": "mock",
+    "tags": [
+      "legal",
+      "privacy"
+    ]
+  }
+]

@@ -1,0 +1,157 @@
+[
+  {
+    "tool_id": "trendyol_get_products",
+    "name": "Trendyol Ürünleri Listele",
+    "description": "Trendyol mağazasındaki ürünleri, fiyatları ve stok miktarlarını getirir.",
+    "category": "store",
+    "provider": "trendyol",
+    "auth_required": true,
+    "timeout_ms": 20000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "page": {"type": "integer", "minimum": 0, "default": 0},
+        "size": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+        "barcode": {"type": "string", "description": "Belirli bir barkod filtresi"}
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "total_elements": {"type": "integer"},
+        "page": {"type": "integer"},
+        "size": {"type": "integer"},
+        "products": {"type": "array"}
+      }
+    },
+    "allowed_agents": ["catalog_agent", "pricing_finance_agent", "store_setup_agent", "dynamic_pricing_agent", "supervisor"],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": ["store", "trendyol", "marketplace", "tr", "products"]
+  },
+  {
+    "tool_id": "trendyol_get_orders",
+    "name": "Trendyol Siparişleri Getir",
+    "description": "Trendyol mağazasındaki siparişleri, durumlarını ve müşteri bilgilerini getirir.",
+    "category": "store",
+    "provider": "trendyol",
+    "auth_required": true,
+    "timeout_ms": 20000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "page": {"type": "integer", "minimum": 0, "default": 0},
+        "size": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+        "status": {
+          "type": "string",
+          "enum": ["Created", "Picking", "Invoiced", "Shipped", "Cancelled", "Delivered", "UnDelivered", "Returned"],
+          "default": "Created"
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "total_elements": {"type": "integer"},
+        "page": {"type": "integer"},
+        "orders": {"type": "array"}
+      }
+    },
+    "allowed_agents": ["operations_agent", "store_setup_agent", "supervisor"],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": ["store", "trendyol", "marketplace", "tr", "orders"]
+  },
+  {
+    "tool_id": "trendyol_update_price",
+    "name": "Trendyol Fiyat & Stok Güncelle",
+    "description": "Trendyol'daki ürün fiyatını ve/veya stok miktarını günceller. Yüksek riskli — insan onayı gerektirir.",
+    "category": "store",
+    "provider": "trendyol",
+    "auth_required": true,
+    "timeout_ms": 25000,
+    "requires_approval": true,
+    "risk_level": "medium",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "barcode": {"type": "string", "description": "Güncellenecek ürünün barkodu"},
+        "sale_price": {"type": "number", "minimum": 0, "description": "Yeni satış fiyatı (TRY)"},
+        "list_price": {"type": "number", "minimum": 0, "description": "Yeni liste fiyatı (TRY, genellikle sale_price'dan yüksek)"},
+        "quantity": {"type": "integer", "minimum": 0, "description": "Yeni stok miktarı"},
+        "items": {
+          "type": "array",
+          "description": "Toplu güncelleme: [{barcode, salePrice, listPrice, quantity}]",
+          "items": {
+            "type": "object",
+            "properties": {
+              "barcode": {"type": "string"},
+              "salePrice": {"type": "number"},
+              "listPrice": {"type": "number"},
+              "quantity": {"type": "integer"}
+            },
+            "required": ["barcode", "salePrice", "listPrice"]
+          }
+        }
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "updated": {"type": "integer"},
+        "barcodes": {"type": "array"},
+        "ok": {"type": "boolean"}
+      }
+    },
+    "allowed_agents": ["pricing_finance_agent", "dynamic_pricing_agent", "supervisor"],
+    "cost_estimate_usd": 0.002,
+    "mode": "live",
+    "tags": ["store", "trendyol", "marketplace", "tr", "pricing", "inventory"]
+  },
+  {
+    "tool_id": "trendyol_create_listing",
+    "name": "Trendyol'da Ürün İlanı Oluştur",
+    "description": "POST /sapigw/suppliers/{id}/v2/products — yeni ürün listeleme. Yüksek riskli, insan onayı gerektirir.",
+    "category": "store",
+    "provider": "trendyol",
+    "auth_required": true,
+    "timeout_ms": 30000,
+    "requires_approval": true,
+    "risk_level": "medium",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "title": {"type": "string", "description": "Ürün başlığı"},
+        "description": {"type": "string"},
+        "barcode": {"type": "string"},
+        "sale_price": {"type": "number", "minimum": 0},
+        "list_price": {"type": "number", "minimum": 0},
+        "quantity": {"type": "integer", "minimum": 0},
+        "categoryId": {"type": "integer"},
+        "brand": {"type": "string"},
+        "productMainId": {"type": "string"},
+        "stockCode": {"type": "string"},
+        "vatRate": {"type": "integer"},
+        "currencyType": {"type": "string"}
+      },
+      "required": ["title", "barcode", "sale_price"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "product_main_id": {"type": "string"},
+        "barcode": {"type": "string"},
+        "batch_request_id": {"type": "string"},
+        "status": {"type": "string"},
+        "ok": {"type": "boolean"}
+      }
+    },
+    "allowed_agents": ["catalog_agent", "marketing_agent", "dynamic_pricing_agent", "supervisor"],
+    "cost_estimate_usd": 0.005,
+    "mode": "live",
+    "tags": ["store", "trendyol", "marketplace", "tr", "listing", "publish"]
+  }
+]

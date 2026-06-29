@@ -1,0 +1,180 @@
+[
+  {
+    "tool_id": "collectapi_shopping_search",
+    "name": "CollectAPI Marketplace Arama",
+    "description": "CollectAPI üzerinden Trendyol/Hepsiburada/n11/Amazon/GittiGidiyor'da ürün araması yapar. Rekabet & fiyat analizleri için kullanılır.",
+    "category": "store",
+    "provider": "collectapi",
+    "auth_required": true,
+    "timeout_ms": 20000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {"type": "string", "minLength": 2, "description": "Aranacak ürün terimi (örn. 'granit tencere')"},
+        "source": {"type": "string", "enum": ["trendyol", "hepsiburada", "n11", "amazon", "gittigidiyor"], "default": "trendyol"},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10}
+      },
+      "required": ["query"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "source": {"type": "string"},
+        "query": {"type": "string"},
+        "count": {"type": "integer"},
+        "results": {"type": "array"}
+      }
+    },
+    "allowed_agents": ["market_research_agent", "pricing_finance_agent", "catalog_agent", "supervisor"],
+    "cost_estimate_usd": 0.002,
+    "mode": "live",
+    "tags": ["store", "collectapi", "trendyol", "competitor", "search"]
+  },
+  {
+    "tool_id": "collectapi_shopping_details",
+    "name": "CollectAPI Ürün Detayı",
+    "description": "CollectAPI üzerinden bir marketplace ürününün detayını (fiyat, açıklama, görseller) URL'sinden getirir.",
+    "category": "store",
+    "provider": "collectapi",
+    "auth_required": true,
+    "timeout_ms": 20000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "minLength": 5, "description": "Ürün URL'si veya CollectAPI tarafından tanınan ürün kimliği"}
+      },
+      "required": ["id"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "detail": {"type": "object"}
+      }
+    },
+    "allowed_agents": ["market_research_agent", "pricing_finance_agent", "catalog_agent", "supervisor"],
+    "cost_estimate_usd": 0.002,
+    "mode": "live",
+    "tags": ["store", "collectapi", "trendyol", "competitor", "detail"]
+  },
+  {
+    "tool_id": "collectapi_shopping_suggestion",
+    "name": "CollectAPI Ürün Önerileri",
+    "description": "Bir ürün URL'sine göre tamamlayıcı/benzer ürün önerileri döner (cross-sell, upsell senaryoları için).",
+    "category": "store",
+    "provider": "collectapi",
+    "auth_required": true,
+    "timeout_ms": 20000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "producturl": {"type": "string", "minLength": 5, "description": "Önerilerin türetileceği ürünün tam URL'si"},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 50}
+      },
+      "required": ["producturl"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "producturl": {"type": "string"},
+        "count": {"type": "integer"},
+        "suggestions": {"type": "array"}
+      }
+    },
+    "allowed_agents": ["market_research_agent", "pricing_finance_agent", "catalog_agent", "growth_review_agent", "supervisor"],
+    "cost_estimate_usd": 0.002,
+    "mode": "live",
+    "tags": ["store", "collectapi", "recommendation", "cross-sell", "upsell"]
+  },
+  {
+    "tool_id": "collectapi_price_follow",
+    "name": "CollectAPI Fiyat Takibi",
+    "description": "Verilen ürün sorgusunu birden fazla e-ticaret sitesinde takip eder; her site için fiyatı ve ürün linkini döner. Dinamik fiyatlandırma ve rakip izleme için kullanılır.",
+    "category": "store",
+    "provider": "collectapi",
+    "auth_required": true,
+    "timeout_ms": 20000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": {"type": "string", "minLength": 2, "description": "Takip edilecek ürün anahtar kelimesi (örn. 'iphone x 64 gb')"},
+        "sites": {"type": "array", "items": {"type": "string"}, "description": "Takip edilecek site listesi (örn. ['trendyol', 'hepsiburada'])"},
+        "url": {"type": "string", "description": "Alternatif: virgülle ayrılmış site dizgisi (sites verilmediyse kullanılır)"}
+      },
+      "required": ["query"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "query": {"type": "string"},
+        "sites": {"type": "string"},
+        "count": {"type": "integer"},
+        "results": {"type": "array"}
+      }
+    },
+    "allowed_agents": ["pricing_finance_agent", "market_research_agent", "dynamic_pricing_agent", "supervisor"],
+    "cost_estimate_usd": 0.002,
+    "mode": "live",
+    "tags": ["store", "collectapi", "price-tracking", "competitor", "dynamic-pricing"]
+  },
+  {
+    "tool_id": "collectapi_currency_to_all",
+    "name": "CollectAPI Döviz Çevirici",
+    "description": "Verilen bir miktarı seçilen baz para biriminden tüm desteklenen para birimlerine çevirir (USD, EUR, TRY, GBP, JPY, vb.). Fiyatlandırma, marj ve uluslararası satış analizleri için.",
+    "category": "finance",
+    "provider": "collectapi",
+    "auth_required": true,
+    "timeout_ms": 15000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "amount": {"type": "number", "minimum": 0, "description": "Çevrilecek miktar (örn. 1000)"},
+        "base": {"type": "string", "default": "USD", "description": "Baz para birimi (ISO 4217, örn. USD/EUR/TRY)"},
+        "targets": {"type": "array", "items": {"type": "string"}, "description": "Filtrelenecek hedef para birimi kodları (boş → tümü)"}
+      },
+      "required": ["amount"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "base": {"type": "string"},
+        "amount": {"type": "number"},
+        "lastupdate": {"type": "string"},
+        "count": {"type": "integer"},
+        "rates": {"type": "array"}
+      }
+    },
+    "allowed_agents": ["pricing_finance_agent", "dynamic_pricing_agent", "analytics_legal_agent", "market_research_agent", "supervisor"],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": ["finance", "collectapi", "currency", "fx", "pricing"]
+  },
+  {
+    "tool_id": "collectapi_bist_stocks",
+    "name": "CollectAPI BIST Hisse Senetleri",
+    "description": "Borsa İstanbul (BIST) hisse senetlerinin anlık fiyat, değişim oranı (%) ve işlem hacmini döner. Makroekonomik bağlam, sektör trend takibi ve fiyatlandırma kararları için.",
+    "category": "finance",
+    "provider": "collectapi",
+    "auth_required": true,
+    "timeout_ms": 15000,
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "codes": {"type": "array", "items": {"type": "string"}, "description": "Filtrelenecek BIST hisse kodları (örn. ['THYAO','ASELS']). Boş → tümü."},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 500, "description": "Döndürülecek maksimum hisse sayısı"}
+      },
+      "required": []
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "count": {"type": "integer"},
+        "stocks": {"type": "array"}
+      }
+    },
+    "allowed_agents": ["pricing_finance_agent", "analytics_legal_agent", "market_research_agent", "supervisor"],
+    "cost_estimate_usd": 0.001,
+    "mode": "live",
+    "tags": ["finance", "collectapi", "bist", "stocks", "borsa", "turkey"]
+  }
+]
